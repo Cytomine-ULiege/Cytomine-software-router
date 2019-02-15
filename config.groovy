@@ -3,8 +3,8 @@ rabbitmq.port="5672"
 rabbitmq.username='router'
 rabbitmq.password='router'
 
-cytomine.core.privateKey='STU'
-cytomine.core.publicKey='VWX'
+cytomine.core.privateKey='9c8b05a8-b4c7-44fb-8dd8-4c543e01a01d'
+cytomine.core.publicKey='52af21ad-6b8b-44f5-a95b-ea296294a21e'
 
 cytomine.core.url='http://localhost-core'
 
