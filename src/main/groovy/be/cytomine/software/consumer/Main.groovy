@@ -51,7 +51,7 @@ class Main {
     static def pendingPullingTable = []
 
     static void main(String[] args) {
-        PropertyConfigurator.configure("log4j.properties");
+        PropertyConfigurator.configure("log4j.properties")
 
         log.info("GROOVY_HOME : ${System.getenv("GROOVY_HOME")}")
         log.info("PATH : ${System.getenv("PATH")}")
@@ -70,7 +70,8 @@ class Main {
 
         // Cytomine instance
         cytomine = new Cytomine(configFile.cytomine.core.url as String, configFile.cytomine.core.publicKey as String, configFile.cytomine.core.privateKey as String)
-
+        log.info("keypub: "+configFile.cytomine.core.publicKey)
+        log.info("keyPriv: "+configFile.cytomine.core.privateKey)
         ping()
 
         log.info("Launch repository thread")
@@ -87,7 +88,7 @@ class Main {
     }
 
     static void ping() {
-        int limit = 20
+        int limit = 100
         int i=0
         while (i < limit){
             try {
@@ -96,11 +97,11 @@ class Main {
                     log.info("Connected as " + current.get("username"))
                     break
                 }
-                sleep(30000)
+                sleep(3000)
                 i++
             } catch (CytomineException e) {
                 log.error("Connection not established. Retry : "+i)
-                sleep(30000)
+                sleep(3000)
                 i++
             }
         }
