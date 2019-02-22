@@ -44,6 +44,7 @@ class Main {
 
     static def configFile = new ConfigSlurper().parse(new File("config.groovy").toURI().toURL())
 
+
     static Cytomine cytomine
     static Connection connection
     static Channel channel
@@ -51,11 +52,11 @@ class Main {
     static def pendingPullingTable = []
 
     static void main(String[] args) {
+
         PropertyConfigurator.configure("log4j.properties")
 
         log.info("GROOVY_HOME : ${System.getenv("GROOVY_HOME")}")
         log.info("PATH : ${System.getenv("PATH")}")
-
         // Create the directory for logs
         def logsDirectory = new File((String) configFile.cytomine.software.path.jobs)
         if (!logsDirectory.exists()) logsDirectory.mkdirs()
@@ -70,8 +71,6 @@ class Main {
 
         // Cytomine instance
         cytomine = new Cytomine(configFile.cytomine.core.url as String, configFile.cytomine.core.publicKey as String, configFile.cytomine.core.privateKey as String)
-        log.info("keypub: "+configFile.cytomine.core.publicKey)
-        log.info("keyPriv: "+configFile.cytomine.core.privateKey)
         ping()
 
         log.info("Launch repository thread")
@@ -122,7 +121,8 @@ class Main {
         SoftwareUserRepositoryCollection softwareUserRepositories = cytomine.getSoftwareUserRepositories()
         for (int i = 0; i < softwareUserRepositories.size(); i++) {
             SoftwareUserRepository currentSoftwareUserRepository = softwareUserRepositories.get(i)
-
+            def test=currentSoftwareUserRepository.getStr("username")
+            log.info("CCCCCCCCCCC boucle 1 de recuperation currentSoftwareUserRepository: $i $test ")
             try {
                 SoftwareManager softwareManager = new SoftwareManager(
                         currentSoftwareUserRepository.getStr("username"),
@@ -133,13 +133,14 @@ class Main {
 
                 def repositoryManagerExist = false
                 for (SoftwareManager elem : repositoryManagers) {
+                    log.info("CCCCCCCCCC  SoftwareManager ")
 
                     // Check if the software manager already exists
                     if (softwareManager.gitHubManager.getClass().getName() == elem.gitHubManager.getClass().getName() &&
                             softwareManager.gitHubManager.username == elem.gitHubManager.username &&
                             softwareManager.dockerHubManager.username == elem.dockerHubManager.username &&
                             !elem.prefixes.containsKey(currentSoftwareUserRepository.getStr("prefix"))) {
-
+                        log.info("CCCCCCCC exist")
                         // Add the new prefix to the prefix list
                         elem.prefixes << [(currentSoftwareUserRepository.getStr("prefix")): currentSoftwareUserRepository.getLong("id")]
                         repositoryManagerExist = true
@@ -159,7 +160,7 @@ class Main {
                 }
 
                 // If the software manager doesn't exist, add it
-                if (!repositoryManagerExist) {
+                if (!repositoryManagerExist) {log.info("CCCCCCCCCC not exist")
                     // Populate the software table with existing Cytomine software
                     SoftwareCollection softwareCollection = cytomine.getSoftwaresBySoftwareUserRepository(currentSoftwareUserRepository.getId())
                     for (int j = 0; j < softwareCollection.size(); j++) {

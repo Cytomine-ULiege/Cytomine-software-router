@@ -1,5 +1,7 @@
 package be.cytomine.software.communication
 
+import be.cytomine.software.consumer.Main
+
 /*
  * Copyright (c) 2009-2018. Authors: see NOTICE file.
  *
@@ -47,10 +49,19 @@ class SSH implements Communication {
             Properties properties = new Properties()
             properties.put("StrictHostKeyChecking", "no")
 
+            printf(Main.configFile.cytomine.software.softDev)
+            if(Main.configFile.cytomine.software.softDev)
+            {
+                if(user=="cytomine")
+                {
+                    host=Main.configFile.cytomine.software.slurmip
+                    port=22
+                }
+            }
             Session session = jSch.getSession(user, host, port)
             session.setConfig(properties)
             session.connect()
-
+            log.info("Values:user: $user host: $host port: $port")
             return session
         } catch (JSchException ex) {
             log.info(ex.toString())

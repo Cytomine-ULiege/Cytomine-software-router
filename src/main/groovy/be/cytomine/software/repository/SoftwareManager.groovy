@@ -57,7 +57,8 @@ class SoftwareManager {
                 Software currentSoftware = softwareTable.get((repository as String).trim().toLowerCase()) as Software
                 def tags = dockerHubManager.getTags(repository as String)
                 if (tags.isEmpty()) {
-                    log.info "No Docker tags: skip software"
+                    log.info "No Docker" +
+                            " tags: skip software"
                     return
                 }
 
