@@ -87,7 +87,7 @@ class Main {
     }
 
     static void ping() {
-        int limit = 100
+        int limit = 20
         int i=0
         while (i < limit){
             try {
@@ -122,7 +122,6 @@ class Main {
         for (int i = 0; i < softwareUserRepositories.size(); i++) {
             SoftwareUserRepository currentSoftwareUserRepository = softwareUserRepositories.get(i)
             def test=currentSoftwareUserRepository.getStr("username")
-            log.info("CCCCCCCCCCC boucle 1 de recuperation currentSoftwareUserRepository: $i $test ")
             try {
                 SoftwareManager softwareManager = new SoftwareManager(
                         currentSoftwareUserRepository.getStr("username"),
@@ -133,14 +132,12 @@ class Main {
 
                 def repositoryManagerExist = false
                 for (SoftwareManager elem : repositoryManagers) {
-                    log.info("CCCCCCCCCC  SoftwareManager ")
 
                     // Check if the software manager already exists
                     if (softwareManager.gitHubManager.getClass().getName() == elem.gitHubManager.getClass().getName() &&
                             softwareManager.gitHubManager.username == elem.gitHubManager.username &&
                             softwareManager.dockerHubManager.username == elem.dockerHubManager.username &&
                             !elem.prefixes.containsKey(currentSoftwareUserRepository.getStr("prefix"))) {
-                        log.info("CCCCCCCC exist")
                         // Add the new prefix to the prefix list
                         elem.prefixes << [(currentSoftwareUserRepository.getStr("prefix")): currentSoftwareUserRepository.getLong("id")]
                         repositoryManagerExist = true
@@ -160,7 +157,7 @@ class Main {
                 }
 
                 // If the software manager doesn't exist, add it
-                if (!repositoryManagerExist) {log.info("CCCCCCCCCC not exist")
+                if (!repositoryManagerExist) {
                     // Populate the software table with existing Cytomine software
                     SoftwareCollection softwareCollection = cytomine.getSoftwaresBySoftwareUserRepository(currentSoftwareUserRepository.getId())
                     for (int j = 0; j < softwareCollection.size(); j++) {

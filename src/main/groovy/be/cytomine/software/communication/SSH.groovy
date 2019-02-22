@@ -48,20 +48,10 @@ class SSH implements Communication {
 
             Properties properties = new Properties()
             properties.put("StrictHostKeyChecking", "no")
-
-            printf(Main.configFile.cytomine.software.softDev)
-            if(Main.configFile.cytomine.software.softDev)
-            {
-                if(user=="cytomine")
-                {
-                    host=Main.configFile.cytomine.software.slurmip
-                    port=22
-                }
-            }
             Session session = jSch.getSession(user, host, port)
+
             session.setConfig(properties)
             session.connect()
-            log.info("Values:user: $user host: $host port: $port")
             return session
         } catch (JSchException ex) {
             log.info(ex.toString())
