@@ -78,6 +78,36 @@ class Interpreter {
         return [imageType: imageType, index: index, image: image]
     }
 
+    def getRamNeeded(){
+
+        def numberOfRamNeeded= descriptor?."ram-needed"?."numberInMB"
+        //if(!numberOfRamNeeded) throw new BoutiquesException("Number of ram needed missing !")
+
+        return numberOfRamNeeded
+    }
+
+    def getPreferredProcessorType(){
+
+        String processorType= descriptor?."preferred-processor-type"
+        if(!processorType) throw new BoutiquesException("Preferred processor type missing!")
+
+        return processorType
+    }
+
+    def getCpuCoresNeeded(){
+        def numberOfCpuCores=descriptor?."cpu-cores"
+        //if(!numberOfCpuCores) throw new BoutiquesException("number of cpu cores needed missing!")
+
+        return numberOfCpuCores
+    }
+
+    def getDiskSpaceNeeded(){
+        def numberOfDiskSpace=descriptor?."Disk-space"
+        //if(!numberOfDiskSpace) throw new BoutiquesException("number of disk space needed missing!")
+
+        return numberOfDiskSpace
+    }
+
     def parseSoftware() {
         String name = descriptor?."name"
         String description = descriptor?."description"
