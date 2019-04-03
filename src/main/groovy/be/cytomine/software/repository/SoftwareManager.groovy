@@ -143,7 +143,6 @@ class SoftwareManager {
         def numberOfDiskSpaceNeeded = interpreter.getDiskSpaceNeeded()
         String typeOfPreferredProcessor= interpreter.getPreferredProcessorType()*/
 
-        S
         return addSoftwareToCytomine(release as String, software, command, arguments, pullingCommand,
                 idSoftwareUserRepository)
     }
