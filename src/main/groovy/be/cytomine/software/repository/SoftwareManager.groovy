@@ -131,6 +131,15 @@ class SoftwareManager {
 
         def idSoftwareUserRepository = startsWithKnownPrefix(repository).value
 
+        //TODO:this comment is to remove!!!
+        //basically, we'll retrieve our new "boutique tag" on the descriptor file
+
+        /*def numberOfRamNeeded = interpreter.getRamNeeded()
+        def numberOfCpuCoresNeeded = interpreter.getCpuCoresNeeded()
+        def numberOfDiskSpaceNeeded = interpreter.getDiskSpaceNeeded()
+        String typeOfPreferredProcessor= interpreter.getPreferredProcessorType()*/
+
+        S
         return addSoftwareToCytomine(release as String, software, command, arguments, pullingCommand,
                 idSoftwareUserRepository)
     }
