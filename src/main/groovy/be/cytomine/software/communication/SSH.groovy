@@ -35,7 +35,6 @@ class SSH implements Communication {
     private Session createSession() {
         try {
             JSch jSch = new JSch()
-
             if (keyFilePath != null) {
                 if (keyPassword != null) {
                     jSch.addIdentity(keyFilePath as String, keyPassword as String)
@@ -43,14 +42,14 @@ class SSH implements Communication {
                     jSch.addIdentity(keyFilePath as String)
                 }
             }
-
             Properties properties = new Properties()
             properties.put("StrictHostKeyChecking", "no")
-
             Session session = jSch.getSession(user, host, port)
-            session.setConfig(properties)
-            session.connect()
 
+            session.setConfig(properties)
+            log.info("connection before with: $user@$host:$port")
+            session.connect()
+            log.info("connection to the session O")
             return session
         } catch (JSchException ex) {
             log.info(ex.toString())
