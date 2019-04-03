@@ -111,6 +111,12 @@ class Main {
         connectionFactory.setPassword(configFile.rabbitmq.password as String)
         connection = connectionFactory.newConnection()
         channel = connection.createChannel()
+        String queueName="queueCommunicationRetrieve"
+        String exchangeName="exchangeCommunicationRetrieve"
+
+        channel.exchangeDeclare(exchangeName, "direct", true)
+        channel.queueDeclare(queueName, true, false, false, null)
+        channel.queueBind(queueName, exchangeName, "")
     }
 
     static RepositoryManagerThread launchRepositoryManagerThread() {
