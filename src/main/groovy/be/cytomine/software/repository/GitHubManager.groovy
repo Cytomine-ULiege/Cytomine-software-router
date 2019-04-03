@@ -35,6 +35,12 @@ class GitHubManager extends AbstractRepositoryManager {
     @Override
     def connectToRepository(String username) {
         gitHub = GitHub.connectAnonymously()
+        /*it's totally possible to be block by this function.... Why? well, it's not a bug. I mean, the github API was designed like this:
+        when it receives too much request in on hour by a certain IP, it "block" this ip... It's not definitive of course...
+        Several solutions: first one is to wait ahahahah. Not a good one
+        second one is to change your ip address. Vpn,...
+        third one is to use a local Json to make local test*/
+        log.info("[AbstractRepositoryManager function] try to connect to the repository...")
         ghUser = gitHub.getUser(username)
     }
 
