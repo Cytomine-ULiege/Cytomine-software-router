@@ -84,7 +84,8 @@ class Main {
     }
 
     static void ping() {
-        int limit = 20
+        int limit = configFile.cytomine.software.ping.maxRetries
+        long timeToSleep= new Long(configFile.cytomine.software.ping.sleep)
         int i=0
         while (i < limit){
             try {
@@ -94,11 +95,11 @@ class Main {
                     log.info("Connected as " + current.get("username"))
                     break
                 }
-                sleep(30000)
+                sleep(timeToSleep)
                 i++
             } catch (CytomineException e) {
                 log.error("Connection not established. Retry : "+i)
-                sleep(30000)
+                sleep(timeToSleep)
                 i++
             }
         }
