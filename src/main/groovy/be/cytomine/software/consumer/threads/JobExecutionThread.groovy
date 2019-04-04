@@ -99,7 +99,7 @@ class JobExecutionThread implements Runnable {
                 runningJobs.remove(cytomineJobId)
             }
             log.info("${logPrefix()} The job [${cytomineJobId}] has been killed successfully !")
-            job.changeStatus(cytomineJobId,8, 0)
+            job.changeStatus(cytomineJobId,job.getVal(Job.JobStatus.KILLED), 0)
         }
         else {
             log.info("${logPrefix()} The job [${cytomineJobId}] has not been killed !")
