@@ -69,9 +69,9 @@ class SoftwareManager {
 
                         try {
                             def result = installSoftware(repository, tags.first())
-                            Software software= new Software()
+                            Software software= new Software().fetch(currentSoftware.getId())
                             software.set("deprecated",true)
-                            software.save()
+                            software.update()
                             softwareTable.put((repository as String).trim().toLowerCase(), result)
 
                             def imagePullerThread = new ImagePullerThread(pullingCommand: result.getStr("pullingCommand") as String)
