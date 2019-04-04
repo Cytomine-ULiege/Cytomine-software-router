@@ -102,7 +102,7 @@ class Interpreter {
     }
 
     def getDiskSpaceNeeded(){
-        def numberOfDiskSpace=descriptor?."Disk-space"
+        def numberOfDiskSpace=descriptor?."disk-space"
         //if(!numberOfDiskSpace) throw new BoutiquesException("number of disk space needed missing!")
 
         return numberOfDiskSpace
