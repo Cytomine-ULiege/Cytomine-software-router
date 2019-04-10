@@ -4,6 +4,7 @@ import be.cytomine.client.collections.Collection
 import be.cytomine.client.models.ProcessingServer
 import be.cytomine.software.communication.Communication
 import be.cytomine.software.communication.SSH
+import be.cytomine.software.consumer.Main
 import com.google.common.base.Splitter
 import com.google.common.collect.Lists
 
@@ -14,7 +15,27 @@ import org.json.simple.JSONObject
 class CheckingLoadSlurmProcessingServer {
 
     static Communication sshForCommunication
+    static ProcessingServer processingServer
 
+    static initiateTheSSHConnection(ProcessingServer ps)
+    {
+        this.processingServer=ps
+        def keyFilePath = """${Main.configFile.cytomine.software.sshKeysFile}/${ps.getStr("host")}/${ps.getStr("host")}"""
+        sshForCommunication=new SSH(ps.getStr("host"),ps.getInt("port"),ps.getStr("username"),keyFilePath,null)
+        //sshForCommunication=new SSH(ps.getStr("host"),ps.getInt("port"),ps.getStr("username"),"/data/ssh/10.19.99.64/10.19.99.64",null)
+
+    }
+    static def getFullInformation(ProcessingServer ps)
+    {
+        if(ps!=null)
+        {
+            List<String> listNamePartition= CheckingLoadSlurmProcessingServer.getListNamesOfPartitions("sinfo -o %R --noheader")
+            ArrayList<Map> listOfAllPartitions=CheckingLoadSlurmProcessingServer.getListAllOfPartitions("scontrol show partition ",listNamePartition)
+            ArrayList<Map> listOfAllNodes = CheckingLoadSlurmProcessingServer.getListAllOfNodes("scontrol show node ",listOfAllPartitions)
+            JSONObject jsonOfTheCurrentPS= CheckingLoadSlurmProcessingServer.makeAFullInformationJSonFromList(listOfAllPartitions,listOfAllNodes)
+            return jsonOfTheCurrentPS
+        }
+    }
 
     static def getListAllOfNodes(String cmd, def listOfAllPartitions)
     {
@@ -78,19 +99,17 @@ class CheckingLoadSlurmProcessingServer {
         return listOfAllPartitions
     }
 
-    static def  getListNamesOfPartitions(String cmd)
+    static def getListNamesOfPartitions(String cmd)
     {
-        log.info("executeCommandWithoutCreateNewSession before")
         def response = sshForCommunication.executeCommandWithoutCreateNewSession(cmd)
-        log.info("executeCommandWithoutCreateNewSession done")
         List<String> listNamePartition = Lists.newArrayList(Splitter.on("\n").split(response))
         listNamePartition.remove(listNamePartition.size()-1)
+        log.info("executeCommandWithoutCreateNewSession done")
         return listNamePartition
     }
 
-    static void affichageMap(def listOfAllPartition,def listOfAllNodes)
+    static void displayMap(def listOfAllPartition, def listOfAllNodes)
     {
-        log.info(" BOUCLE AFFICHAGE PARTITION:")
         for(int i=0;i<listOfAllPartition.size();i++)
         {
             Map<String,String> mapTest=listOfAllPartition.get(i)
@@ -116,7 +135,6 @@ class CheckingLoadSlurmProcessingServer {
             Map<String,String> mapTest=listOfAllPartition.get(i)
             JSONObject jsonPartitions= new JSONObject(mapTest)
             jsonListPartitions.add(jsonPartitions)
-            log.info("$jsonPartitions")
         }
         for(int i=0;i<listOfAllNodes.size();i++)
         {
@@ -124,7 +142,6 @@ class CheckingLoadSlurmProcessingServer {
             Map<String,String> mapTmp=listOfAllNodes.get(i)
             JSONObject jsonNodes= new JSONObject(mapTmp)
             jsonListNodes.add(jsonNodes)
-            log.info("$jsonNodes")
         }
 
         JSONObject jsonToReturn= new JSONObject()
@@ -137,7 +154,6 @@ class CheckingLoadSlurmProcessingServer {
 
     static def convertAFullInformationJsonToLists(JSONObject json)
     {
-        log.info("convert")
         ArrayList<JSONObject> listOfAllNodes = new ArrayList()
         ArrayList<JSONObject> listOfAllPartitions = new ArrayList()
 
