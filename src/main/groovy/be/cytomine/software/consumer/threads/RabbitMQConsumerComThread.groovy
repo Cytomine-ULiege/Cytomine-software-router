@@ -114,6 +114,31 @@ class RabbitMQConsumerComThread implements Consumer {
 
                     break
 
+                //this case will check the load for a given processingserver
+                case "checkLoadOnePS":
+                    log.info("[Communication] Request checkLoadOnePS")
+
+                    def psTmp=mapMessage["processingServerID"]
+                    ProcessingServer ps=new ProcessingServer()
+                    ps.fetch(new Long(psTmp))
+
+                    Stopwatch timer = Stopwatch.createUnstarted()
+                    timer.start()
+
+                    CheckingLoadSlurmProcessingServer.initiateTheSSHConnection(ps)
+                    //we'll retrieve the 3 information about the current PS
+                    JSONObject jsonToReturn=CheckingLoadSlurmProcessingServer.getFullInformation(ps)
+
+                    //create a message to send to the core
+                    jsonToReturn.put("requestType","responseCheckLoadForOnePS" )
+                    //String queueName="queueCommunicationRetrieve"
+                    String exchangeName="exchangeCommunicationRetrieve"
+                    channel.basicPublish(exchangeName,"", null, jsonToReturn.toString().getBytes())
+                    timer.stop()
+                    log.info("DONE with: $timer")
+
+                    break
+
                 case "addProcessingServer":
                     log.info("[Communication] Add a new processing server : " + mapMessage["name"])
 
