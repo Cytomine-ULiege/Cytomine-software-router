@@ -43,12 +43,8 @@ class ProcessingServerThread implements Runnable {
         try {
             log.info("${this.processingServer.getStr("processingMethodName")}")
             processingMethod = AbstractProcessingMethod.newInstance(this.processingServer.getStr("processingMethodName"))
-            processingMethod.communication = new SSH(
-                    host: processingServer.getStr("host"),
-                    port: processingServer.getStr("port") as Integer,
-                    user: processingServer.getStr("username"),
-                    keyFilePath: Main.configFile.cytomine.software.sshKeysFile
-            )
+            processingMethod.communication = new SSH(processingServer.getStr("host"), processingServer.getStr("port") as Integer, processingServer.getStr("username"), Main.configFile.cytomine.software.sshKeysFile)
+
             log.info("Processing server : ${processingServer.getStr("name")}")
             log.info("================================================")
             log.info("host : ${processingServer.getStr("host")}")

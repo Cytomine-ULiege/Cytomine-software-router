@@ -33,13 +33,13 @@ class SSH implements Communication {
     Session session
     int port = 22
 
-    SSH(String host,int port, String user, String keyFilePath, String keyPassword=null)
+    SSH(String host,int port, String user, String keyFilePath)
     {
         this.user=user
         this.port=port
         this.host=host
         this.keyFilePath=keyFilePath
-        this.keyPassword=keyPassword
+        this.keyPassword=null
         this.session=createSession()
     }
     private Session createSession() {
