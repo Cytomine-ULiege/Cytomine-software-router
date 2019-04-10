@@ -166,5 +166,35 @@ class CheckingLoadSlurmProcessingServer {
         for(int i=0;i<listOfAllNodes.size();i++)
             log.info("${listOfAllNodes.get(i)}")
     }
+
+    static def getMostSuitablePS()
+    {
+        //for each processing server,we'll create 2 json file... 1 for the nodes and 1 for the partitions.
+        // We'll put these files in one JSon and these JSon will be put on a map
+        Collection<ProcessingServer> processingServerCollection = Collection.fetch(ProcessingServer.class)
+        Map<ProcessingServer,JSONObject> mapOfJSONs= new HashMap<ProcessingServer,JSONObject>()
+
+        for(int i=0;i< processingServerCollection.size();i++)
+        {
+            ProcessingServer ps=new ProcessingServer()
+            ps.fetch(new Long(processingServerCollection.get(i).id))
+            initiateTheSSHConnection(ps)
+            //we'll retrieve the 3 information about the current PS
+            mapOfJSONs.put(ps,getFullInformation(ps))
+        }
+        log.info("Number of processingServer: ${mapOfJSONs.size()}")
+        List<ProcessingServer> listOfKeys = new ArrayList<ProcessingServer>(mapOfJSONs.keySet())
+        for(int i=0;i<listOfKeys.size();i++)
+        {
+            log.info("Processing server: ${listOfKeys.get(i).id}")
+            JSONObject jsonTMP=new JSONObject(mapOfJSONs.get(listOfKeys.get(i)))
+            log.info("       ${jsonTMP}")
+        }
+
+        Long idOfTheChosenPS=ProcessingServerSelectionAlgorithms.basicAlgorithm(mapOfJSONs)
+        ProcessingServer chosenPS= new ProcessingServer().fetch(idOfTheChosenPS)
+        log.info("Chosen PS: $chosenPS")
+        return chosenPS
+    }
 }
 
