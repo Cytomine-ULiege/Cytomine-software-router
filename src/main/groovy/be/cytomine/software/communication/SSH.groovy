@@ -30,8 +30,18 @@ class SSH implements Communication {
     String host
     String keyFilePath
     String keyPassword = null
+    Session session
     int port = 22
 
+    SSH(String host,int port, String user, String keyFilePath, String keyPassword=null)
+    {
+        this.user=user
+        this.port=port
+        this.host=host
+        this.keyFilePath=keyFilePath
+        this.keyPassword=keyPassword
+        this.session=createSession()
+    }
     private Session createSession() {
         try {
             JSch jSch = new JSch()
@@ -44,12 +54,12 @@ class SSH implements Communication {
             }
             Properties properties = new Properties()
             properties.put("StrictHostKeyChecking", "no")
-            Session session = jSch.getSession(user, host, port)
+            session = jSch.getSession(user, host, port)
 
             session.setConfig(properties)
-            log.info("connection before with: $user@$host:$port")
+            log.info("Connection with: $user@$host:$port")
             session.connect()
-            log.info("connection to the session O")
+            log.info("Connection ok!")
             return session
         } catch (JSchException ex) {
             log.info(ex.toString())
@@ -59,7 +69,7 @@ class SSH implements Communication {
 
     @Override
     def executeCommand(String command) throws JSchException, UnknownHostException {
-        Session session = createSession()
+        session = createSession()
 
         Channel channel = session.openChannel("exec")
         ((ChannelExec) channel).setCommand(command)
@@ -94,8 +104,41 @@ class SSH implements Communication {
     }
 
     @Override
+    def executeCommandWithoutCreateNewSession(String command) throws JSchException, UnknownHostException {
+
+        Channel channel = session.openChannel("exec")
+        ((ChannelExec) channel).setCommand(command)
+        channel.setInputStream(null)
+        ((ChannelExec) channel).setErrStream(System.err)
+
+        InputStream inputStream = channel.getInputStream()
+        channel.connect()
+
+        boolean closed = false
+        byte[] temp = new byte[1024]
+        String result = ""
+
+        while (!closed) {
+            while (inputStream.available() > 0) {
+                int bytesRead = inputStream.read(temp, 0, 1024)
+                if (bytesRead < 0) break
+                String current = new String(temp, 0, bytesRead)
+                result += current
+                log.info(current)
+            }
+            if (channel.isClosed()) {
+                log.info("exit-status: ${channel.getExitStatus()}")
+                closed = true
+            }
+        }
+
+        return result
+    }
+
+
+    @Override
     def copyRemoteToLocal(def from, def to, def filename) throws JSchException, IOException, UnknownHostException {
-        Session session = createSession()
+        session = createSession()
 
         from += File.separator + filename
         def prefix = null
@@ -183,7 +226,7 @@ class SSH implements Communication {
 
     @Override
     def copyLocalToRemote(def from, def to, def filename) throws JSchException, IOException, UnknownHostException {
-        Session session = createSession()
+        session = createSession()
 
         def ptimestamp = true
         from = from + File.separator + filename
