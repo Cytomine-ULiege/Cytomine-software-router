@@ -201,7 +201,7 @@ class CheckingLoadSlurmProcessingServer {
             log.info("       ${jsonTMP}")
         }
 
-        Long idOfTheChosenPS=ProcessingServerSelectionAlgorithms.basicAlgorithm(mapOfJSONs)
+        Long idOfTheChosenPS=ProcessingServerSelectionAlgorithms.basicAlgorithmRandomChoice(mapOfJSONs)
         ProcessingServer chosenPS= new ProcessingServer().fetch(idOfTheChosenPS)
         log.info("Chosen PS: $chosenPS")
         return chosenPS
