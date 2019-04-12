@@ -21,8 +21,8 @@ class CheckingLoadSlurmProcessingServer {
     {
         this.processingServer=ps
         def keyFilePath = """${Main.configFile.cytomine.software.sshKeysFile}/${ps.getStr("host")}/${ps.getStr("host")}"""
-        sshForCommunication=new SSH(ps.getStr("host"),ps.getInt("port"),ps.getStr("username"),keyFilePath,null)
-        //sshForCommunication=new SSH(ps.getStr("host"),ps.getInt("port"),ps.getStr("username"),"/data/ssh/10.19.99.64/10.19.99.64",null)
+        sshForCommunication=new SSH(ps.getStr("host"),ps.getInt("port"),ps.getStr("username"),keyFilePath)
+        //sshForCommunication=new SSH(ps.getStr("host"),ps.getInt("port"),ps.getStr("username"),"/data/ssh/10.19.99.64/10.19.99.64")
 
     }
     static def getFullInformation(ProcessingServer ps)
@@ -40,7 +40,7 @@ class CheckingLoadSlurmProcessingServer {
     static def getListAllOfNodes(String cmd, def listOfAllPartitions)
     {
         ArrayList<Map> listOfAllNodes = new ArrayList()
-
+        int nbNode=0
         for(int i=0;i<listOfAllPartitions.size();i++)
         {
             Map<String,String> mapTmp=listOfAllPartitions.get(i)
@@ -61,12 +61,22 @@ class CheckingLoadSlurmProcessingServer {
                         String[] parts = tmp.split("=")
                         if(parts[0]!="" && parts[1]!="")
                         {
+                            if(parts[0]=="NodeName")//why >0? because ifnot we'll add the first node just after the first field
+                            {
+                                if(j!=0)//why?because we'll add the first node just after the first field if we don't put this condition
+                                {
+                                    //new node so, we've to save the map first
+                                    listOfAllNodes.add(nbNode,mapTest)
+                                    nbNode++
+                                    mapTest=new HashMap<String, String>()
+                                }
+                            }
                             mapTest.put(parts[0], parts[1])
                         }
                     }
                 }
             }
-            listOfAllNodes.add(i,mapTest)
+            listOfAllNodes.add(nbNode,mapTest)
         }
         return listOfAllNodes
     }
