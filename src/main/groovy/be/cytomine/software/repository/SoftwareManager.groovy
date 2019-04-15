@@ -50,30 +50,51 @@ class SoftwareManager {
     }
 
     def updateSoftware() {
-        log.info("Refresh repository manager ${name} with prefixes: ${prefixes.keySet()}")
-        def repositories = dockerHubManager.getRepositories()
-        log.info(repositories)
-        repositories.each { repository ->
-            if (startsWithKnownPrefix(repository as String)) {
-                log.info("Repository : ${repository}")
-                Software currentSoftware = softwareTable.get((repository as String).trim().toLowerCase()) as Software
-                def tags = dockerHubManager.getTags(repository as String)
-                if (tags.isEmpty()) {
-                    log.info "No Docker tags: skip software"
-                    return
-                }
+        try
+        {
+            log.info("Refresh repository manager ${name} with prefixes: ${prefixes.keySet()}")
+            def repositories = dockerHubManager.getRepositories()
+            log.info(repositories)
+            repositories.each { repository ->
+                if (startsWithKnownPrefix(repository as String)) {
+                    log.info("Repository : ${repository}")
+                    Software currentSoftware = softwareTable.get((repository as String).trim().toLowerCase()) as Software
+                    def tags = dockerHubManager.getTags(repository as String)
+                    if (tags.isEmpty()) {
+                        log.info "No Docker tags: skip software"
+                        return
+                    }
 
-                if (currentSoftware != null) {
-                    if (currentSoftware.get("softwareVersion") as String != tags.first() as String) {
-                        log.info("Update the software [${repository}]")
+                    if (currentSoftware != null) {
+                        if (currentSoftware.get("softwareVersion") as String != tags.first() as String) {
+                            log.info("Update the software [${repository}]")
+
+                            try {
+                                def result = installSoftware(repository, tags.first())
+                                Software software= new Software().fetch(currentSoftware.getId())
+                                software.set("deprecated",true)
+                                software.update()
+                                softwareTable.put((repository as String).trim().toLowerCase(), result)
+
+                                def imagePullerThread = new ImagePullerThread(pullingCommand: result.getStr("pullingCommand") as String)
+                                ExecutorService executorService = Executors.newSingleThreadExecutor()
+                                executorService.execute(imagePullerThread)
+                            } catch (GHFileNotFoundException ex) {
+                                log.info("Error during the installation of [${repository}] : ${ex.getMessage()}")
+                            } catch (BoutiquesException ex) {
+                                log.info("Boutiques exception : ${ex.getMessage()}")
+                            } catch (CytomineException ex) {
+                                log.info("Error during the adding of [${repository}] to Cytomine : ${ex.getMessage()}")
+                            } catch (Exception ex) {
+                                log.info("Unknown exception occurred : ${ex.getMessage()}")
+                            }
+                        }
+                    } else {
+                        log.info("Add the software [${repository}]")
 
                         try {
                             def result = installSoftware(repository, tags.first())
-                            Software software= new Software().fetch(currentSoftware.getId())
-                            software.set("deprecated",true)
-                            software.update()
                             softwareTable.put((repository as String).trim().toLowerCase(), result)
-
                             def imagePullerThread = new ImagePullerThread(pullingCommand: result.getStr("pullingCommand") as String)
                             ExecutorService executorService = Executors.newSingleThreadExecutor()
                             executorService.execute(imagePullerThread)
@@ -84,31 +105,17 @@ class SoftwareManager {
                         } catch (CytomineException ex) {
                             log.info("Error during the adding of [${repository}] to Cytomine : ${ex.getMessage()}")
                         } catch (Exception ex) {
-                            log.info("Unknown exception occurred : ${ex.getMessage()}")
+                            log.info("Unknown exception occurred : ${ex.printStackTrace()}")
                         }
-                    }
-                } else {
-                    log.info("Add the software [${repository}]")
-
-                    try {
-                        def result = installSoftware(repository, tags.first())
-                        softwareTable.put((repository as String).trim().toLowerCase(), result)
-
-                        def imagePullerThread = new ImagePullerThread(pullingCommand: result.getStr("pullingCommand") as String)
-                        ExecutorService executorService = Executors.newSingleThreadExecutor()
-                        executorService.execute(imagePullerThread)
-                    } catch (GHFileNotFoundException ex) {
-                        log.info("Error during the installation of [${repository}] : ${ex.getMessage()}")
-                    } catch (BoutiquesException ex) {
-                        log.info("Boutiques exception : ${ex.getMessage()}")
-                    } catch (CytomineException ex) {
-                        log.info("Error during the adding of [${repository}] to Cytomine : ${ex.getMessage()}")
-                    } catch (Exception ex) {
-                        log.info("Unknown exception occurred : ${ex.printStackTrace()}")
                     }
                 }
             }
         }
+        catch(IOException e)
+        {
+            log.info(e.printStackTrace())
+        }
+
     }
 
     private def startsWithKnownPrefix(def repository) {
@@ -118,33 +125,38 @@ class SoftwareManager {
     }
 
     private def installSoftware(def repository, def release) {
-        def filename = gitHubManager.retrieveDescriptor(repository as String, release as String)
 
-        Interpreter interpreter = new Interpreter(filename)
-        def pullingInformation = interpreter.getPullingInformation()
-        def imageName = interpreter.getImageName() + "-" + release as String
+        try
+        {
+            def filename = gitHubManager.retrieveDescriptor(repository as String, release as String)
+            Interpreter interpreter = new Interpreter(filename)
+            def pullingInformation = interpreter.getPullingInformation()
+            def imageName = interpreter.getImageName() + "-" + release as String
+            def pullingCommand = 'singularity pull --name ' + imageName + '.simg docker://' +
+                    pullingInformation['image'] + ':' + release as String
 
-        def pullingCommand = 'singularity pull --name ' + imageName + '.simg docker://' +
-                pullingInformation['image'] + ':' + release as String
+            def software = interpreter.parseSoftware()
+            def command = interpreter.buildExecutionCommand(imageName + ".simg")
+            def arguments = interpreter.parseParameters()
+            new File(filename).delete()
 
-        def software = interpreter.parseSoftware()
-        def command = interpreter.buildExecutionCommand(imageName + ".simg")
-        def arguments = interpreter.parseParameters()
+            def idSoftwareUserRepository = startsWithKnownPrefix(repository).value
+            log.info(" startsWithKnownPrefix ok")
+            //TODO:this comment is to remove!!!
+            //basically, we'll retrieve our new "boutique tag" on the descriptor file
 
-        new File(filename).delete()
+            /*def numberOfRamNeeded = interpreter.getRamNeeded()
+            def numberOfCpuCoresNeeded = interpreter.getCpuCoresNeeded()
+            def numberOfDiskSpaceNeeded = interpreter.getDiskSpaceNeeded()
+            String typeOfPreferredProcessor= interpreter.getPreferredProcessorType()*/
+            return addSoftwareToCytomine(release as String, software, command, arguments, pullingCommand,
+                    idSoftwareUserRepository)
 
-        def idSoftwareUserRepository = startsWithKnownPrefix(repository).value
-
-        //TODO:this comment is to remove!!!
-        //basically, we'll retrieve our new "boutique tag" on the descriptor file
-
-        /*def numberOfRamNeeded = interpreter.getRamNeeded()
-        def numberOfCpuCoresNeeded = interpreter.getCpuCoresNeeded()
-        def numberOfDiskSpaceNeeded = interpreter.getDiskSpaceNeeded()
-        String typeOfPreferredProcessor= interpreter.getPreferredProcessorType()*/
-
-        return addSoftwareToCytomine(release as String, software, command, arguments, pullingCommand,
-                idSoftwareUserRepository)
+        }
+        catch(IOException e)
+        {
+            log.info(e.printStackTrace())
+        }
     }
 
     /**

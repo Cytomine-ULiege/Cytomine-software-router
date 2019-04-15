@@ -34,37 +34,41 @@ class GitHubManager extends AbstractRepositoryManager {
 
     @Override
     def connectToRepository(String username) {
-        gitHub = GitHub.connectAnonymously()
-        /*it's totally possible to be block by this function.... Why? well, it's not a bug. I mean, the github API was designed like this:
-        when it receives too much request in on hour by a certain IP, it "block" this ip... It's not definitive of course...
-        Several solutions: first one is to wait ahahahah. Not a good one
-        second one is to change your ip address. Vpn,...
-        third one is to use a local Json to make local test*/
-        log.info("[AbstractRepositoryManager function] try to connect to the repository...")
-        ghUser = gitHub.getUser(username)
+        try{
+            gitHub=new GitHubBuilder().withRateLimitHandler(RateLimitHandler.FAIL).build()
+            ghUser = gitHub.getUser(username)
+        }
+        catch(IOException e)
+        {
+            log.info(e.printStackTrace())
+        }
     }
 
     def retrieveDescriptor(def repository, def release) throws GHFileNotFoundException {
-        def currentRepository = ghUser.getRepository((repository as String).trim().toLowerCase())
-        if (currentRepository == null) {
-            throw new GHFileNotFoundException("The repository doesn't exist !")
+        try
+        {
+                def currentRepository = ghUser.getRepository((repository as String).trim().toLowerCase())
+                if (currentRepository == null) {
+                    throw new GHFileNotFoundException("The repository doesn't exist !")
+                }
+                def content = currentRepository.getDirectoryContent(".", release as String)
+
+                for (def element : content) {
+                    if (element.getName().trim().toLowerCase() == Main.configFile.cytomine.software.descriptorFile) {
+                        def url = new URL(element.getDownloadUrl())
+                        def readableByteChannel = Channels.newChannel(url.openStream())
+                        def filename = (Main.configFile.cytomine.software.path.softwareSources as String) + element.getName()
+                        def fileOutputStream = new FileOutputStream(filename)
+                        fileOutputStream.getChannel().transferFrom(readableByteChannel, 0, Long.MAX_VALUE)
+                        return filename
+                    }
+                }
+                throw new GHFileNotFoundException("The software descriptor doesn't exist !")
         }
-
-        def content = currentRepository.getDirectoryContent(".", release as String)
-
-        for (def element : content) {
-            if (element.getName().trim().toLowerCase() == Main.configFile.cytomine.software.descriptorFile) {
-                def url = new URL(element.getDownloadUrl())
-                def readableByteChannel = Channels.newChannel(url.openStream())
-                def filename = (Main.configFile.cytomine.software.path.softwareSources as String) + element.getName()
-                def fileOutputStream = new FileOutputStream(filename)
-                fileOutputStream.getChannel().transferFrom(readableByteChannel, 0, Long.MAX_VALUE)
-
-                return filename
-            }
+        catch(IOException e)
+        {
+            log.info(e.printStackTrace())
         }
-
-        throw new GHFileNotFoundException("The software descriptor doesn't exist !")
     }
 
 }
