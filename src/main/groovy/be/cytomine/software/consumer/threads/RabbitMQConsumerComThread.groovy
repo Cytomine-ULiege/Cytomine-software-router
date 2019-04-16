@@ -190,9 +190,18 @@ class RabbitMQConsumerComThread implements Consumer {
 
                     break
                 case "refreshRepositories":
-                    log.info("[Communication] Refresh all software user repositories")
 
-                    repositoryManagerThread.refreshAll()
+                    log.info("[Communication] Refresh all software user repositories")
+                    def returnString=repositoryManagerThread.refreshAll()
+
+                    JSONObject jsonToReturn= new JSONObject()
+
+                    //create a message to send to the core
+                    jsonToReturn.put("requestType","responseRefreshAllRepositories" )
+                    jsonToReturn.put("response",returnString)
+                    String exchangeName="exchangeCommunicationRetrieve"
+                    channel.basicPublish(exchangeName,"", null, jsonToReturn.toString().getBytes())
+
                     break
             }
         }
