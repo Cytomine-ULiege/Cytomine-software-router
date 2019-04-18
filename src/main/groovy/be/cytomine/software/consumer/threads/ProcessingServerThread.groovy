@@ -43,14 +43,16 @@ class ProcessingServerThread implements Runnable {
         try {
             log.info("${this.processingServer.getStr("processingMethodName")}")
             processingMethod = AbstractProcessingMethod.newInstance(this.processingServer.getStr("processingMethodName"))
-            processingMethod.communication = new SSH(processingServer.getStr("host"), processingServer.getStr("port") as Integer, processingServer.getStr("username"), Main.configFile.cytomine.software.sshKeysFile)
+            String keyFilePath=Main.configFile.cytomine.software.sshKeysFile
+            def keyPathToReturn = """${keyFilePath}/${processingServer.getStr("host")}/${processingServer.getStr("host")}"""
+            processingMethod.communication = new SSH(processingServer.getStr("host"), processingServer.getStr("port") as Integer, processingServer.getStr("username"), keyPathToReturn)
 
             log.info("Processing server : ${processingServer.getStr("name")}")
             log.info("================================================")
             log.info("host : ${processingServer.getStr("host")}")
             log.info("port : ${processingServer.getStr("port")}")
             log.info("user : ${processingServer.getStr("username")}")
-            log.info("keyFilePath : ${Main.configFile.cytomine.software.sshKeysFile}")
+            log.info("keyFilePath : ${keyPathToReturn}")
             log.info("================================================")
 
         } catch (ClassNotFoundException ex) {
