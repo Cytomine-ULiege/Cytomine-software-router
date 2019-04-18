@@ -22,8 +22,6 @@ class CheckingLoadSlurmProcessingServer {
         this.processingServer=ps
         def keyFilePath = """${Main.configFile.cytomine.software.sshKeysFile}/${ps.getStr("host")}/${ps.getStr("host")}"""
         sshForCommunication=new SSH(ps.getStr("host"),ps.getInt("port"),ps.getStr("username"),keyFilePath)
-        //sshForCommunication=new SSH(ps.getStr("host"),ps.getInt("port"),ps.getStr("username"),"/data/ssh/10.19.99.64/10.19.99.64")
-
     }
     static def getFullInformation(ProcessingServer ps)
     {
@@ -114,7 +112,6 @@ class CheckingLoadSlurmProcessingServer {
         def response = sshForCommunication.executeCommandWithoutCreateNewSession(cmd)
         List<String> listNamePartition = Lists.newArrayList(Splitter.on("\n").split(response))
         listNamePartition.remove(listNamePartition.size()-1)
-        log.info("executeCommandWithoutCreateNewSession done")
         return listNamePartition
     }
 
@@ -183,7 +180,6 @@ class CheckingLoadSlurmProcessingServer {
         // We'll put these files in one JSon and these JSon will be put on a map
         Collection<ProcessingServer> processingServerCollection = Collection.fetch(ProcessingServer.class)
         Map<ProcessingServer,JSONObject> mapOfJSONs= new HashMap<ProcessingServer,JSONObject>()
-
         for(int i=0;i< processingServerCollection.size();i++)
         {
             ProcessingServer ps=new ProcessingServer()
@@ -192,18 +188,10 @@ class CheckingLoadSlurmProcessingServer {
             //we'll retrieve the 3 information about the current PS
             mapOfJSONs.put(ps,getFullInformation(ps))
         }
-        log.info("Number of processingServer: ${mapOfJSONs.size()}")
-        List<ProcessingServer> listOfKeys = new ArrayList<ProcessingServer>(mapOfJSONs.keySet())
-        for(int i=0;i<listOfKeys.size();i++)
-        {
-            log.info("Processing server: ${listOfKeys.get(i).id}")
-            JSONObject jsonTMP=new JSONObject(mapOfJSONs.get(listOfKeys.get(i)))
-            log.info("       ${jsonTMP}")
-        }
 
         Long idOfTheChosenPS=ProcessingServerSelectionAlgorithms.basicAlgorithmRandomChoice(mapOfJSONs)
         ProcessingServer chosenPS= new ProcessingServer().fetch(idOfTheChosenPS)
-        log.info("Chosen PS: $chosenPS")
+        log.info("Processing server chosen by the Algorithm: $chosenPS")
         return chosenPS
     }
 }
