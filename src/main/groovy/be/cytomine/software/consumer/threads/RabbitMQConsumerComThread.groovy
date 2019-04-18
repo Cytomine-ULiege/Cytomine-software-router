@@ -71,11 +71,13 @@ class RabbitMQConsumerComThread implements Consumer {
                     log.info("[Communication] Request checking load")
 
 
-                    if(!mapMessage["automaticChoiceOfServerEnabled"])
+                    if(mapMessage["automaticChoiceOfServerEnabled"])
                     {
 
                         //TODO put the job info in the getMostSuitablePS function... As a result, the algo will use the information!
+                        log.info("before getMostSuitablePS")
                         ProcessingServer chosenPS=CheckingLoadSlurmProcessingServer.getMostSuitablePS()
+                        log.info("after getMostSuitablePS")
                         def mapOfChosenPS = jsonSlurper.parseText(chosenPS.getStr("amqpQueue"))
                         String queueToRedirect=mapOfChosenPS["exchange"]
                         //TODO problem AMQP exchange: in the cytomine front for example, we put the queue of the slurm local...
