@@ -32,6 +32,7 @@ class SSH implements Communication {
     String keyPassword = null
     Session session
     int port = 22
+    int statusCode
 
     SSH(String host,int port, String user, String keyFilePath)
     {
@@ -68,6 +69,12 @@ class SSH implements Communication {
     }
 
     @Override
+    def getExitStatus()
+    {
+        return statusCode
+    }
+
+    @Override
     def executeCommand(String command) throws JSchException, UnknownHostException {
         session = createSession()
 
@@ -92,7 +99,8 @@ class SSH implements Communication {
                 log.info(current)
             }
             if (channel.isClosed()) {
-                log.info("exit-status: ${channel.getExitStatus()}")
+                statusCode=channel.getExitStatus()
+                log.info("exit-status: ${statusCode}")
                 closed = true
             }
         }
@@ -127,7 +135,8 @@ class SSH implements Communication {
                 log.info(current)
             }
             if (channel.isClosed()) {
-                log.info("exit-status: ${channel.getExitStatus()}")
+                statusCode=channel.getExitStatus()
+                log.info("exit-status: ${statusCode}")
                 closed = true
             }
         }

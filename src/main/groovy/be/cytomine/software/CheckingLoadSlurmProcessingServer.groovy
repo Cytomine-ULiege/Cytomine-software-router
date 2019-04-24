@@ -185,14 +185,76 @@ class CheckingLoadSlurmProcessingServer {
             ProcessingServer ps=new ProcessingServer()
             ps.fetch(new Long(processingServerCollection.get(i).id))
             initiateTheSSHConnection(ps)
-            //we'll retrieve the 3 information about the current PS
-            mapOfJSONs.put(ps,getFullInformation(ps))
+            JSONObject validityOfCurrentPs=new JSONObject()
+            validityOfCurrentPs=this.checkValidityOfProcessingServer(ps)
+
+            //we'll retrieve the 3 information about the current PS. Only if the current PS is valid... So, UP with Singularity installed
+            if(validityOfCurrentPs.get("isValid")==true)
+                mapOfJSONs.put(ps,getFullInformation(ps))
         }
 
         Long idOfTheChosenPS=ProcessingServerSelectionAlgorithms.basicAlgorithmRandomChoice(mapOfJSONs)
         ProcessingServer chosenPS= new ProcessingServer().fetch(idOfTheChosenPS)
         log.info("Processing server chosen by the Algorithm: $chosenPS")
         return chosenPS
+    }
+
+    static def checkValidityOfProcessingServer(ProcessingServer ps)
+    {
+        //This function checks if the PS is up and if singularity is installed on the PS
+        JSONObject jsToReturn=new JSONObject()
+        boolean isValid=false
+        String comment
+        try
+        {
+            //init + ping
+            log.info("tentative de connection")
+            if(sshForCommunication==null)
+                initiateTheSSHConnection(ps)
+        }
+        catch(Exception ex)
+        {
+            log.info("SSH failed!")
+            isValid=false
+            comment="SSH failed!"
+            jsToReturn.put("isValid",isValid)
+            jsToReturn.put("comment",comment)
+            return jsToReturn
+        }
+
+        try
+        {
+            log.info("check singularity")
+            def response = sshForCommunication.executeCommandWithoutCreateNewSession("singularity --version")
+            if(sshForCommunication.getExitStatus()!=0)
+            {
+                log.info("Singularity isn't installed!")
+                isValid=false
+                comment="Singularity isn't installed!"
+                jsToReturn.put("isValid",isValid)
+                jsToReturn.put("comment",comment)
+                return jsToReturn
+            }
+            else
+            {
+                log.info("Singularity is installed!")
+            }
+        }
+        catch(Exception ex)
+        {
+            log.info("exception  ${ex.printStackTrace()}")
+            isValid=false
+            comment="Singularity isn't installed!"
+            jsToReturn.put("isValid",isValid)
+            jsToReturn.put("comment",comment)
+            return jsToReturn
+        }
+
+        log.info("The processing server is valid: the ping works and singularity is installed")
+        jsToReturn.put("isValid",true)
+        jsToReturn.put("comment","The processing server is valid: the ping works and singularity is installed.")
+
+        return jsToReturn
     }
 }
 

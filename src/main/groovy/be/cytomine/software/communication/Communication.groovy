@@ -26,4 +26,6 @@ interface Communication {
 
     def copyLocalToRemote(def from, def to, def filename)
 
+    def getExitStatus()
+
 }
