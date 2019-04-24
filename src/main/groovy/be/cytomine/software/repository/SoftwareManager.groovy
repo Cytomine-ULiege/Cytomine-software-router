@@ -16,8 +16,8 @@ package be.cytomine.software.repository
  * limitations under the License.
  */
 
+import be.cytomine.client.collections.Collection
 import be.cytomine.client.CytomineException
-import be.cytomine.client.collections.ParameterConstraintCollection
 import be.cytomine.client.models.Description
 import be.cytomine.client.models.ParameterConstraint
 import be.cytomine.client.models.Software
@@ -173,6 +173,7 @@ class SoftwareManager {
     private def addSoftwareToCytomine(def version, def software, def command, def arguments, def pullingCommand,
                                       def idSoftwareUserRepository) throws CytomineException {
         // Add the piece of software
+        log.info("ADDING SOFTWARE")
         Software resultSoftware= new Software(false,version as String,software.name as String, idSoftwareUserRepository, software.processingServerId as Long,"", command as String, pullingCommand as String)
         resultSoftware = resultSoftware.save()
 
@@ -182,8 +183,7 @@ class SoftwareManager {
         }
 
         // Load constraints
-        ParameterConstraintCollection constraints = ParameterConstraintCollection.fetch(ParameterConstraintCollection.class)
-        constraints=constraints.save()
+        Collection<ParameterConstraint> constraints=Collection.fetch(ParameterConstraint.class)
         // Add the arguments
         arguments.each { element ->
             def type = (element.type as String).toLowerCase().capitalize()
