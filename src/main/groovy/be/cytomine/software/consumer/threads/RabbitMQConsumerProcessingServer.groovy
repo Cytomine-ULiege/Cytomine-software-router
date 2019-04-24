@@ -74,8 +74,8 @@ class RabbitMQConsumerProcessingServer implements Consumer {
             try {
                 switch (mapMessage["requestType"]) {
                     case "execute":
-                        Job job= new Job()
                         Long jobId = mapMessage["jobId"] as Long
+                        Job job=new Job().fetch(new Long(jobId))
                         logPrefix += "[Job ${jobId}]"
                         log.info("${logPrefix} Try to execute...")
 
@@ -85,7 +85,10 @@ class RabbitMQConsumerProcessingServer implements Consumer {
                         def imageName = temp.substring(0, temp.indexOf(" "))
                         try {
                             job.changeStatus(jobId,job.getVal(Job.JobStatus.WAIT), 0,"Try to find image [${imageName}]")
-                        } catch (Exception e) {}
+                        } catch (Exception e) {
+                            String errorMessage = e.getMessage()
+                            log.info(errorMessage)
+                        }
                         synchronized (Main.pendingPullingTable) {
                             def start = System.currentTimeSeconds()
                             while (Main.pendingPullingTable.contains(imageName)) {
@@ -106,15 +109,14 @@ class RabbitMQConsumerProcessingServer implements Consumer {
                         }
 
                         def imageExists = new File("${Main.configFile.cytomine.software.path.softwareImages}/${imageName}").exists()
-
                         def pullingResult = 0
                         if (!imageExists) {
                             log.info("${logPrefix} Image not found locally ")
                             log.info("${logPrefix} Try pulling image... ")
+                            log.info("${logPrefix} pulling with: ${pullingCommand} ")
                             def process = pullingCommand.execute()
                             process.waitFor()
                             pullingResult = process.exitValue()
-
                             if (pullingResult == 0) {
                                 def movingProcess = ("mv ${imageName} ${Main.configFile.cytomine.software.path.softwareImages}").execute()
                                 movingProcess.waitFor()
@@ -123,7 +125,6 @@ class RabbitMQConsumerProcessingServer implements Consumer {
 
                         if (imageExists || pullingResult == 0) {
                             log.info("${logPrefix} Found image!")
-
                             String command = ""
                             mapMessage["command"].each {
                                 if (command == "singularity run ") {
@@ -143,12 +144,13 @@ class RabbitMQConsumerProcessingServer implements Consumer {
                                     persistentDirectory: processingServer.getStr("persistentDirectory"),
                                     workingDirectory: processingServer.getStr("workingDirectory")
                             )
+                            log.info("Thread JobExecution created!")
                             synchronized (runningJobs) {
 
                                 runningJobs.put(jobId, jobExecutionThread)
                             }
-                            job.changeStatus(jobId,job.getVal(Job.JobStatus.INQUEUE), 0)
 
+                            job.changeStatus(jobId,job.getVal(Job.JobStatus.INQUEUE), 0,"Job in queue")
                             ExecutorService executorService = Executors.newSingleThreadExecutor()
                             executorService.execute(jobExecutionThread)
 
@@ -160,9 +162,8 @@ class RabbitMQConsumerProcessingServer implements Consumer {
 
                         break
                     case "kill":
-                        Job job= new Job()
                         def jobId = mapMessage["jobId"] as Long
-
+                        Job job=new Job().fetch(new Long(jobId))
                         log.info("${logPrefix} Try killing the job : ${jobId}")
 
                         synchronized (runningJobs) {

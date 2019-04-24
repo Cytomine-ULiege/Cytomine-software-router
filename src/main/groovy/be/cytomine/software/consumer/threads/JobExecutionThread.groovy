@@ -58,7 +58,7 @@ class JobExecutionThread implements Runnable {
             log.info("${logPrefix()} Cytomine job id   : ${cytomineJobId}")
             log.info("${logPrefix()} Server job id     : ${serverJobId}")
 
-            if(job.getStr("status")==job.getVal(Job.JobStatus.INQUEUE))//we check that because of the concurence./ Check the previous status. is "inqueue"?
+            if(Integer.parseInt(job.getStr("status"))==job.getVal(Job.JobStatus.INQUEUE))
                 job.changeStatus(cytomineJobId,job.getVal(Job.JobStatus.RUNNING), 0)
             // Wait until the end of the job
             while (processingMethod.isAlive(serverJobId)) {
