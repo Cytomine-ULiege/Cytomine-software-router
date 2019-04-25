@@ -208,7 +208,6 @@ class CheckingLoadSlurmProcessingServer {
         try
         {
             //init + ping
-            log.info("tentative de connection")
             if(sshForCommunication==null)
                 initiateTheSSHConnection(ps)
         }
