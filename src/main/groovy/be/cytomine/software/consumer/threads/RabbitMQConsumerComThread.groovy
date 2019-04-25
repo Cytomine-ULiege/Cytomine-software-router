@@ -67,52 +67,38 @@ class RabbitMQConsumerComThread implements Consumer {
 
             switch (mapMessage["requestType"]) {
 
+                //this case will check the loads and will redirect the request to execute the job
                 case "checkAllLoad":
-                    log.info("[Communication] Request checking load")
+                    log.info("[Communication] Request checking all load")
 
-
+                    ProcessingServer chosenPS
                     if(mapMessage["automaticChoiceOfServerEnabled"])
                     {
-
                         //TODO put the job info in the getMostSuitablePS function... As a result, the algo will use the information!
-                        log.info("before getMostSuitablePS")
-                        ProcessingServer chosenPS=CheckingLoadSlurmProcessingServer.getMostSuitablePS()
-                        log.info("after getMostSuitablePS")
-                        def mapOfChosenPS = jsonSlurper.parseText(chosenPS.getStr("amqpQueue"))
-                        String queueToRedirect=mapOfChosenPS["exchange"]
-                        //TODO problem AMQP exchange: in the cytomine front for example, we put the queue of the slurm local...
-                        log.info("name of the exchange queue: ${mapOfChosenPS["exchange"]}")
-                        log.info("Chosen PS: ${chosenPS.getStr("name")} ${chosenPS.getStr("exchange")} ${chosenPS.getStr("username")}  ${chosenPS.getStr("amqpQueue")}")
-
-                        //we inject the request into the queue of the good ps
-                        JSONObject requestToSend= new JSONObject(mapMessage)
-                        requestToSend.put("requestType","execute" )
-
-                        log.info("Request before sending: ${requestToSend}")
-                        channel.basicPublish(queueToRedirect,"", null, requestToSend.toString().getBytes())
+                        chosenPS=CheckingLoadSlurmProcessingServer.getMostSuitablePS()
                     }
                     else
                     {
                         //in this condition, we'll redirect the request in the good queue
+                        //we retrieve the good queue thanks to the jobId
                         def jobId = mapMessage["jobId"]
                         Job jobTmp=new Job().fetch(new Long(jobId))
                         if(jobTmp!=null && jobTmp.getStr("processingServer")!=null)
                         {
-                            ProcessingServer chosenPS=new ProcessingServer().fetch(new Long(jobTmp.getStr("processingServer")))
-                            def mapOfChosenPS = jsonSlurper.parseText(chosenPS.getStr("amqpQueue"))
-                            String queueToRedirect=mapOfChosenPS["exchange"]
-                            //TODO problem AMQP exchange: in the cytomine front for example, we put the queue of the slurm local...
-                            log.info("name of the exchange queue: ${mapOfChosenPS["exchange"]}")
-                            log.info("Chosen PS: ${chosenPS.getStr("name")} ${chosenPS.getStr("exchange")} ${chosenPS.getStr("username")}  ${chosenPS.getStr("amqpQueue")}")
-
-                            //we inject the request into the queue of the good ps
-                            JSONObject requestToSend= new JSONObject(mapMessage)
-                            requestToSend.put("requestType","execute" )
-
-                            log.info("Request before sending: ${requestToSend}")
-                            channel.basicPublish(queueToRedirect,"", null, requestToSend.toString().getBytes())
+                            chosenPS=new ProcessingServer().fetch(new Long(jobTmp.getStr("processingServer")))
                         }
                     }
+
+                    log.info("Processing server chosen: ${chosenPS.getStr("name")} ${chosenPS.getStr("username")}")
+                    def mapOfChosenPS = jsonSlurper.parseText(chosenPS.getStr("amqpQueue"))
+                    String queueToRedirect=mapOfChosenPS["exchange"]
+
+                    //we inject the request into the queue of the good ps
+                    JSONObject requestToSend= new JSONObject(mapMessage)
+                    requestToSend.put("requestType","execute" )
+
+                    log.info("Request before sending: ${requestToSend}")
+                    channel.basicPublish(queueToRedirect,"", null, requestToSend.toString().getBytes())
 
                     break
 
@@ -133,11 +119,10 @@ class RabbitMQConsumerComThread implements Consumer {
 
                     //create a message to send to the core
                     jsonToReturn.put("requestType","responseCheckLoadForOnePS" )
-                    //String queueName="queueCommunicationRetrieve"
                     String exchangeName="exchangeCommunicationRetrieve"
                     channel.basicPublish(exchangeName,"", null, jsonToReturn.toString().getBytes())
                     timer.stop()
-                    log.info("DONE with: $timer")
+                    log.info("execution time of checkLoadOnePS: $timer")
 
                     break
 
