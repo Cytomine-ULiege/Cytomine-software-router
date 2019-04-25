@@ -47,6 +47,8 @@ class GitHubManager extends AbstractRepositoryManager {
     def retrieveDescriptor(def repository, def release) throws GHFileNotFoundException {
         try
         {
+            if(ghUser!=null)
+            {
                 def currentRepository = ghUser.getRepository((repository as String).trim().toLowerCase())
                 if (currentRepository == null) {
                     throw new GHFileNotFoundException("The repository doesn't exist !")
@@ -64,6 +66,9 @@ class GitHubManager extends AbstractRepositoryManager {
                     }
                 }
                 throw new GHFileNotFoundException("The software descriptor doesn't exist !")
+            }
+            else
+                throw new GHFileNotFoundException("The user is null!")
         }
         catch(IOException e)
         {
