@@ -42,12 +42,12 @@ class JobExecutionThread implements Runnable {
 
     @Override
     void run() {
-        Job job= new Job()
+        Job job
         try {
             // Executes a job on a server using a processing method(slurm,...) and a communication method (SSH,...)
             def result = processingMethod.executeJob(command, serverParameters, workingDirectory)
             serverJobId = result['jobId']
-
+            job= new Job().fetch(new Long(cytomineJobId))
             if (serverJobId == -1) {
                 log.error("${logPrefix()} Job failed! Reason: ${result['message']}")
                 job.changeStatus(cytomineJobId,job.getVal(Job.JobStatus.FAILED), 0, result['message'] as String)
@@ -59,11 +59,11 @@ class JobExecutionThread implements Runnable {
             log.info("${logPrefix()} Server job id     : ${serverJobId}")
 
             if(Integer.parseInt(job.getStr("status"))==job.getVal(Job.JobStatus.INQUEUE))
+            {
                 job.changeStatus(cytomineJobId,job.getVal(Job.JobStatus.RUNNING), 0)
+            }
             // Wait until the end of the job
             while (processingMethod.isAlive(serverJobId)) {
-                log.info("${logPrefix()} Job is running !")
-
                 sleep((refreshRate as Long) * 1000)
             }
 
@@ -76,13 +76,15 @@ class JobExecutionThread implements Runnable {
 
                 if (logFile.exists()) {
                     // Upload the log file as an attachedFile to the Cytomine-core
-                    AttachedFile uploadAttachedFile= new AttachedFile("job", cytomineJobId as Long,filePath as String )
+                    AttachedFile uploadAttachedFile= new AttachedFile("be.cytomine.processing.Job", cytomineJobId as Long,filePath as String )
                     uploadAttachedFile=uploadAttachedFile.save()
                     // Remove the log file
                     new File(filePath as String).delete()
+                    job.changeStatus(cytomineJobId,job.getVal(Job.JobStatus.SUCCESS), 0)
                 }
             } else {
                 log.error("${logPrefix()} Logs not retrieved !")
+                job.changeStatus(cytomineJobId,job.getVal(Job.JobStatus.FAILED), 0)
             }
         }
         catch (Exception e) {
