@@ -41,7 +41,7 @@ class SSH implements Communication {
         this.host=host
         this.keyFilePath=keyFilePath
         this.keyPassword=null
-        this.session=createSession()
+        this.session=null
     }
     private Session createSession() {
         try {
@@ -114,6 +114,11 @@ class SSH implements Communication {
     @Override
     def executeCommandWithoutCreateNewSession(String command) throws JSchException, UnknownHostException {
 
+        if(this.session==null)
+        {
+            //we need to create the session first!
+            this.session=createSession()
+        }
         Channel channel = session.openChannel("exec")
         ((ChannelExec) channel).setCommand(command)
         channel.setInputStream(null)
