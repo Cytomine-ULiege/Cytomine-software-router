@@ -1,8 +1,10 @@
 package be.cytomine.software.consumer.threads
 
+import be.cytomine.client.collections.Collection
 import be.cytomine.client.models.Job
 import be.cytomine.client.models.ProcessingServer
-import be.cytomine.software.CheckingLoadSlurmProcessingServer
+import be.cytomine.software.algorithms.BasicAlgorithmRandomChoice
+import be.cytomine.software.processingmethod.AbstractProcessingMethod
 import be.cytomine.software.repository.SoftwareManager
 import be.cytomine.software.repository.threads.RepositoryManagerThread
 import com.google.common.base.Stopwatch
@@ -24,7 +26,7 @@ class RabbitMQConsumerComThread implements Consumer {
     private JsonSlurper jsonSlurper = new JsonSlurper()
     private Channel channel
     private RepositoryManagerThread repositoryManagerThread
-
+    AbstractProcessingMethod processingMethod
     RabbitMQConsumerComThread(Channel chan, RepositoryManagerThread repo)
     {
         channel=chan
@@ -75,7 +77,7 @@ class RabbitMQConsumerComThread implements Consumer {
                     if(mapMessage["automaticChoiceOfServerEnabled"])
                     {
                         //TODO put the job info in the getMostSuitablePS function... As a result, the algo will use the information!
-                        chosenPS=CheckingLoadSlurmProcessingServer.getMostSuitablePS()
+                        chosenPS= this.getMostSuitablePS()
                     }
                     else
                     {
@@ -104,25 +106,34 @@ class RabbitMQConsumerComThread implements Consumer {
 
                 //this case will check the load for a given processingserver
                 case "checkLoadOnePS":
-                    log.info("[Communication] Request checkLoadOnePS")
+                    try
+                    {
+                        log.info("[Communication] Request checkLoadOnePS")
 
-                    def psTmp=mapMessage["processingServerID"]
-                    ProcessingServer ps=new ProcessingServer()
-                    ps.fetch(new Long(psTmp))
+                        def psTmp=mapMessage["processingServerID"]
+                        ProcessingServer ps=new ProcessingServer()
+                        ps.fetch(new Long(psTmp))
 
-                    Stopwatch timer = Stopwatch.createUnstarted()
-                    timer.start()
+                        Stopwatch timer = Stopwatch.createUnstarted()
+                        timer.start()
 
-                    CheckingLoadSlurmProcessingServer.initiateTheSSHConnection(ps)
-                    //we'll retrieve the 3 information about the current PS
-                    JSONObject jsonToReturn=CheckingLoadSlurmProcessingServer.getFullInformation(ps)
+                        processingMethod = AbstractProcessingMethod.newInstance(ps.getStr("processingMethodName"))
 
-                    //create a message to send to the core
-                    jsonToReturn.put("requestType","responseCheckLoadForOnePS" )
-                    String exchangeName="exchangeCommunicationRetrieve"
-                    channel.basicPublish(exchangeName,"", null, jsonToReturn.toString().getBytes())
-                    timer.stop()
-                    log.info("execution time of checkLoadOnePS: $timer")
+                        processingMethod.initiateTheSSHConnection(ps)
+                        JSONObject jsonToReturn=processingMethod.getFullInformation(ps)
+
+                        //create a message to send to the core
+                        jsonToReturn.put("requestType","responseCheckLoadForOnePS" )
+                        String exchangeName="exchangeCommunicationRetrieve"
+                        channel.basicPublish(exchangeName,"", null, jsonToReturn.toString().getBytes())
+                        timer.stop()
+                        log.info("execution time of checkLoadOnePS: $timer")
+                    }
+                    catch(Exception ex)
+                    {
+                        log.info("Error in the checkLoadOnePS request")
+                        log.info(ex.printStackTrace())
+                    }
 
                     break
 
@@ -191,6 +202,40 @@ class RabbitMQConsumerComThread implements Consumer {
 
                     break
             }
+        }
+    }
+
+    def getMostSuitablePS()
+    {
+        try
+        {
+            Collection<ProcessingServer> processingServerCollection = Collection.fetch(ProcessingServer.class)
+            Map<ProcessingServer,JSONObject> mapOfJSONs= new HashMap<ProcessingServer,JSONObject>()
+            for(int i=0;i< processingServerCollection.size();i++)
+            {
+                ProcessingServer ps=new ProcessingServer()
+                ps.fetch(new Long(processingServerCollection.get(i).id))
+                processingMethod = AbstractProcessingMethod.newInstance(ps.getStr("processingMethodName"))
+
+                processingMethod.initiateTheSSHConnection(ps)
+                JSONObject validityOfCurrentPs=new JSONObject()
+                validityOfCurrentPs=processingMethod.checkValidityOfProcessingServer(ps)
+
+                //we'll retrieve the 3 information about the current PS. Only if the current PS is valid... So, UP with Singularity installed
+                if(validityOfCurrentPs.get("isValid")==true)
+                    mapOfJSONs.put(ps,processingMethod.getFullInformation(ps))
+
+            }
+
+            BasicAlgorithmRandomChoice basicAlgorithmRandomChoice=new BasicAlgorithmRandomChoice(mapOfJSONs)
+            Long idOfTheChosenPS= basicAlgorithmRandomChoice.getBestProcessingServer()
+            ProcessingServer chosenPS= new ProcessingServer().fetch(idOfTheChosenPS)
+            log.info("Processing server chosen by the Algorithm: $chosenPS")
+            return chosenPS
+        }
+        catch(Exception ex)
+        {
+            log.info("error  ${ex.printStackTrace()}")
         }
     }
 }

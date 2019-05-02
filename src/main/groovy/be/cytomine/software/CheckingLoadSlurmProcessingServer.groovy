@@ -17,24 +17,11 @@ class CheckingLoadSlurmProcessingServer {
     static Communication sshForCommunication
     static ProcessingServer processingServer
 
-    static initiateTheSSHConnection(ProcessingServer ps)
+    CheckingLoadSlurmProcessingServer(Communication communication,ProcessingServer ps)
     {
+        this.sshForCommunication=communication
         this.processingServer=ps
-        def keyFilePath = """${Main.configFile.cytomine.software.sshKeysFile}/${ps.getStr("host")}/${ps.getStr("host")}"""
-        sshForCommunication=new SSH(ps.getStr("host"),ps.getInt("port"),ps.getStr("username"),keyFilePath)
     }
-    static def getFullInformation(ProcessingServer ps)
-    {
-        if(ps!=null)
-        {
-            List<String> listNamePartition= CheckingLoadSlurmProcessingServer.getListNamesOfPartitions("sinfo -o %R --noheader")
-            ArrayList<Map> listOfAllPartitions=CheckingLoadSlurmProcessingServer.getListAllOfPartitions("scontrol show partition ",listNamePartition)
-            ArrayList<Map> listOfAllNodes = CheckingLoadSlurmProcessingServer.getListAllOfNodes("scontrol show node ",listOfAllPartitions)
-            JSONObject jsonOfTheCurrentPS= CheckingLoadSlurmProcessingServer.makeAFullInformationJSonFromList(listOfAllPartitions,listOfAllNodes)
-            return jsonOfTheCurrentPS
-        }
-    }
-
     static def getListAllOfNodes(String cmd, def listOfAllPartitions)
     {
         ArrayList<Map> listOfAllNodes = new ArrayList()
@@ -172,88 +159,6 @@ class CheckingLoadSlurmProcessingServer {
             log.info("${listOfAllPartitions.get(i)}")
         for(int i=0;i<listOfAllNodes.size();i++)
             log.info("${listOfAllNodes.get(i)}")
-    }
-
-    static def getMostSuitablePS()
-    {
-        //for each processing server,we'll create 2 json file... 1 for the nodes and 1 for the partitions.
-        // We'll put these files in one JSon and these JSon will be put on a map
-        Collection<ProcessingServer> processingServerCollection = Collection.fetch(ProcessingServer.class)
-        Map<ProcessingServer,JSONObject> mapOfJSONs= new HashMap<ProcessingServer,JSONObject>()
-        for(int i=0;i< processingServerCollection.size();i++)
-        {
-            ProcessingServer ps=new ProcessingServer()
-            ps.fetch(new Long(processingServerCollection.get(i).id))
-            initiateTheSSHConnection(ps)
-            JSONObject validityOfCurrentPs=new JSONObject()
-            validityOfCurrentPs=this.checkValidityOfProcessingServer(ps)
-
-            //we'll retrieve the 3 information about the current PS. Only if the current PS is valid... So, UP with Singularity installed
-            if(validityOfCurrentPs.get("isValid")==true)
-                mapOfJSONs.put(ps,getFullInformation(ps))
-        }
-
-        Long idOfTheChosenPS=ProcessingServerSelectionAlgorithms.basicAlgorithmRandomChoice(mapOfJSONs)
-        ProcessingServer chosenPS= new ProcessingServer().fetch(idOfTheChosenPS)
-        log.info("Processing server chosen by the Algorithm: $chosenPS")
-        return chosenPS
-    }
-
-    static def checkValidityOfProcessingServer(ProcessingServer ps)
-    {
-        //This function checks if the PS is up and if singularity is installed on the PS
-        JSONObject jsToReturn=new JSONObject()
-        boolean isValid=false
-        String comment
-        try
-        {
-            //init + ping
-            if(sshForCommunication==null)
-                initiateTheSSHConnection(ps)
-        }
-        catch(Exception ex)
-        {
-            log.info("SSH failed!")
-            isValid=false
-            comment="SSH failed!"
-            jsToReturn.put("isValid",isValid)
-            jsToReturn.put("comment",comment)
-            return jsToReturn
-        }
-
-        try
-        {
-            log.info("check singularity")
-            def response = sshForCommunication.executeCommandWithoutCreateNewSession("singularity --version")
-            if(sshForCommunication.getExitStatus()!=0)
-            {
-                log.info("Singularity isn't installed!")
-                isValid=false
-                comment="Singularity isn't installed!"
-                jsToReturn.put("isValid",isValid)
-                jsToReturn.put("comment",comment)
-                return jsToReturn
-            }
-            else
-            {
-                log.info("Singularity is installed!")
-            }
-        }
-        catch(Exception ex)
-        {
-            log.info("exception  ${ex.printStackTrace()}")
-            isValid=false
-            comment="Singularity isn't installed!"
-            jsToReturn.put("isValid",isValid)
-            jsToReturn.put("comment",comment)
-            return jsToReturn
-        }
-
-        log.info("The processing server is valid: the ping works and singularity is installed")
-        jsToReturn.put("isValid",true)
-        jsToReturn.put("comment","The processing server is valid: the ping works and singularity is installed.")
-
-        return jsToReturn
     }
 }
 
