@@ -80,11 +80,9 @@ class JobExecutionThread implements Runnable {
                     uploadAttachedFile=uploadAttachedFile.save()
                     // Remove the log file
                     new File(filePath as String).delete()
-                    job.changeStatus(cytomineJobId,job.getVal(Job.JobStatus.SUCCESS), 0)
                 }
             } else {
                 log.error("${logPrefix()} Logs not retrieved !")
-                job.changeStatus(cytomineJobId,job.getVal(Job.JobStatus.FAILED), 0)
             }
         }
         catch (Exception e) {
