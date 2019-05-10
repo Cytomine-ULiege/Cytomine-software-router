@@ -46,7 +46,7 @@ class CheckingLoadSlurmProcessingServer {
                         String[] parts = tmp.split("=")
                         if(parts[0]!="" && parts[1]!="")
                         {
-                            if(parts[0]=="NodeName")//why >0? because ifnot we'll add the first node just after the first field
+                            if(parts[0]=="NodeName")
                             {
                                 if(j!=0)//why?because we'll add the first node just after the first field if we don't put this condition
                                 {
@@ -142,7 +142,7 @@ class CheckingLoadSlurmProcessingServer {
         jsonToReturn.put("partitions",jsonListPartitions)
         jsonToReturn.put("nodes",jsonListNodes)
 
-        log.info("To return: $jsonToReturn")
+        log.info("Json created: $jsonToReturn")
         return jsonToReturn
     }
 

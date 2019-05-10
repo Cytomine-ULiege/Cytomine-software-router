@@ -33,6 +33,11 @@ class SSH implements Communication {
     Session session
     int port = 22
     int statusCode
+    /*SSH status Error Codes
+        0 =Success
+        1 =Generic error
+        2 =Remote host connection failure
+    */
 
     SSH(String host,int port, String user, String keyFilePath)
     {
@@ -58,13 +63,17 @@ class SSH implements Communication {
             session = jSch.getSession(user, host, port)
 
             session.setConfig(properties)
-            log.info("Connection with: $user@$host:$port")
+            log.info("Connection SSH attempt with: $user@$host:$port (Keypath:$keyFilePath)")
             session.connect()
-            log.info("Connection ok!")
+            log.info("Connection SSH ok!")
             return session
         } catch (JSchException ex) {
             log.info(ex.toString())
             return null
+        }
+        catch (Exception ex)
+        {
+            log.info("${ex.printStackTrace()}")
         }
     }
 
@@ -72,6 +81,25 @@ class SSH implements Communication {
     def getExitStatus()
     {
         return statusCode
+    }
+    def printStatusCode(int statusCode)
+    {
+
+        switch(statusCode)
+        {
+            case 0:
+                log.info("exit-status: ${statusCode} (Success)")
+                break
+            case 1:
+                log.info("exit-status: ${statusCode} (Generic error)")
+                break
+            case 2:
+                log.info("exit-status: ${statusCode} (Remote host connection failure)")
+                break
+            default:
+                log.info("exit-status: ${statusCode}")
+                break
+        }
     }
 
     @Override
@@ -100,7 +128,7 @@ class SSH implements Communication {
             }
             if (channel.isClosed()) {
                 statusCode=channel.getExitStatus()
-                log.info("exit-status: ${statusCode}")
+                printStatusCode(statusCode)
                 closed = true
             }
         }
@@ -141,7 +169,7 @@ class SSH implements Communication {
             }
             if (channel.isClosed()) {
                 statusCode=channel.getExitStatus()
-                log.info("exit-status: ${statusCode}")
+                printStatusCode(statusCode)
                 closed = true
             }
         }

@@ -24,11 +24,15 @@ import be.cytomine.client.models.ProcessingServer
 import be.cytomine.client.models.Software
 import be.cytomine.client.models.SoftwareUserRepository
 import be.cytomine.client.models.User
+import be.cytomine.software.communication.Communication
 import be.cytomine.software.communication.SSH
 import be.cytomine.software.consumer.threads.CommunicationThread
 import be.cytomine.software.consumer.threads.ProcessingServerThread
 import be.cytomine.software.repository.SoftwareManager
 import be.cytomine.software.repository.threads.RepositoryManagerThread
+import com.jcraft.jsch.ChannelExec
+import com.jcraft.jsch.JSch
+import com.jcraft.jsch.Session
 import com.rabbitmq.client.Channel
 import com.rabbitmq.client.Connection
 import com.rabbitmq.client.ConnectionFactory
@@ -41,33 +45,37 @@ import java.util.concurrent.Executors
 @Log4j
 class Main {
 
+
     static def configFile = new ConfigSlurper().parse(new File("config.groovy").toURI().toURL())
 
     static Cytomine cytomine
     static Connection connection
     static Channel channel
-
     static def pendingPullingTable = []
     static void main(String[] args) {
-       PropertyConfigurator.configure("log4j.properties")
+
+        PropertyConfigurator.configure("log4j.properties")
 
         log.info("GROOVY_HOME : ${System.getenv("GROOVY_HOME")}")
         log.info("PATH : ${System.getenv("PATH")}")
 
-        // Create the directory for logs
+        log.info("Create the directory for logs")
         def logsDirectory = new File((String) configFile.cytomine.software.path.jobs)
         if (!logsDirectory.exists()) logsDirectory.mkdirs()
 
-        // Create the directory for software data
+        log.info("Create the directory for software data")
         def dataDirectory = new File((String) configFile.cytomine.software.path.softwareSources)
         if (!dataDirectory.exists()) dataDirectory.mkdirs()
 
-        // Create the directory for images
+        log.info("Create the directory for images")
         def imagesDirectory = new File((String) configFile.cytomine.software.path.softwareImages)
         if (!imagesDirectory.exists()) imagesDirectory.mkdirs()
 
-        // Cytomine instance
+         // Cytomine instance
+        log.info("Connection to the Cytomine instance with:")
+        log.info("${configFile.cytomine.core.url} ${configFile.cytomine.core.publicKey} ${configFile.cytomine.core.privateKey}")
         Cytomine.connection(configFile.cytomine.core.url, configFile.cytomine.core.publicKey, configFile.cytomine.core.privateKey)
+        log.info("Connection done. Before ping2!")
         ping()
 
         log.info("Launch repository thread")
@@ -88,6 +96,7 @@ class Main {
         long timeToSleep= new Long(configFile.cytomine.software.ping.sleep)
         int i=0
         while (i < limit){
+            log.info("connection attempt to the core number: $i")
             try {
                 User current = Cytomine.getInstance().getCurrentUser()
 
@@ -174,6 +183,7 @@ class Main {
                     }
 
                     // Add the software manager
+                    // Add the software manager
                     repositoryManagers.add(softwareManager)
                 }
 
@@ -183,7 +193,6 @@ class Main {
                 log.info("An unknown exception occurred : ${ex.getMessage()}")
             }
         }
-
         // Launch the repository manager thread
         def repositoryManagerThread = new RepositoryManagerThread(repositoryManagers: repositoryManagers as ArrayList)
         def executorService = Executors.newSingleThreadExecutor()
