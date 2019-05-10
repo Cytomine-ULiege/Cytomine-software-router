@@ -41,7 +41,7 @@ RUN wget https://github.com/sylabs/singularity/releases/download/$SINGULARITY_VE
 
 # Software-router Installation
 ARG VERSION
-ARG NAMESPACE=Cytomine-ULiege
+ARG NAMESPACE=13eMualliug
 ARG RELEASE_PATH=https://github.com/${NAMESPACE}/Cytomine-software-router/releases/download/v${VERSION}
 ADD ${RELEASE_PATH}/cytomine-software-router-${VERSION}-jar-with-dependencies.jar /opt/cytomine-software-router.jar
 COPY log4j.properties /opt/log4j.properties
