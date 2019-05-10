@@ -69,38 +69,89 @@ class RabbitMQConsumerComThread implements Consumer {
 
             switch (mapMessage["requestType"]) {
 
-                //this case will check the loads and will redirect the request to execute the job
-                case "checkAllLoad":
-                    log.info("[Communication] Request checking all load")
+                 //this case will check the loads and will redirect the request to execute the job
+                case "checkLoadsAndExecute":
+                    try
+                    {
+                        log.info("[Communication] Request CheckLoadsAndExecute")
 
-                    ProcessingServer chosenPS
-                    if(mapMessage["automaticChoiceOfServerEnabled"])
-                    {
-                        //TODO put the job info in the getMostSuitablePS function... As a result, the algo will use the information!
-                        chosenPS= this.getMostSuitablePS()
-                    }
-                    else
-                    {
-                        //in this condition, we'll redirect the request in the good queue
-                        //we retrieve the good queue thanks to the jobId
                         def jobId = mapMessage["jobId"]
                         Job jobTmp=new Job().fetch(new Long(jobId))
-                        if(jobTmp!=null && jobTmp.getStr("processingServer")!=null)
+                        ProcessingServer chosenPS
+                        if(mapMessage["automaticChoiceOfServerEnabled"])
                         {
-                            chosenPS=new ProcessingServer().fetch(new Long(jobTmp.getStr("processingServer")))
+                            chosenPS= this.getMostSuitablePS()
+                            jobTmp.set("processingServer",chosenPS.getId())
+                            jobTmp=jobTmp.update()
                         }
+                        else
+                        {
+                            //in this condition, we'll redirect the request in the good queue
+                            //we retrieve the good queue thanks to the jobId
+
+                            if(jobTmp!=null && jobTmp.getStr("processingServer")!=null)
+                            {
+                                chosenPS=new ProcessingServer().fetch(new Long(jobTmp.getStr("processingServer")))
+                            }
+                        }
+
+                        log.info("Processing server chosen: ${chosenPS.getStr("name")} ${chosenPS.getStr("username")}")
+                        def mapOfChosenPS = jsonSlurper.parseText(chosenPS.getStr("amqpQueue"))
+                        String queueToRedirect=mapOfChosenPS["exchange"]
+
+                        //we inject the request into the queue of the good ps
+                        JSONObject requestToSend= new JSONObject(mapMessage)
+                        requestToSend.put("requestType","execute" )
+
+                        log.info("Request to reinject: ${requestToSend}")
+                        channel.basicPublish(queueToRedirect,"", null, requestToSend.toString().getBytes())
+
+
+                    }
+                    catch(Exception ex)
+                    {
+                        log.info("error: ${ex.printStackTrace()}")
                     }
 
-                    log.info("Processing server chosen: ${chosenPS.getStr("name")} ${chosenPS.getStr("username")}")
-                    def mapOfChosenPS = jsonSlurper.parseText(chosenPS.getStr("amqpQueue"))
-                    String queueToRedirect=mapOfChosenPS["exchange"]
+                    break
 
-                    //we inject the request into the queue of the good ps
-                    JSONObject requestToSend= new JSONObject(mapMessage)
-                    requestToSend.put("requestType","execute" )
 
-                    log.info("Request before sending: ${requestToSend}")
-                    channel.basicPublish(queueToRedirect,"", null, requestToSend.toString().getBytes())
+                case "checkLoadOfAllPs":
+                    try
+                    {
+                        log.info("[Communication] Request checkLoadOfAllPs")
+
+                        Collection<ProcessingServer> processingServerCollection = Collection.fetch(ProcessingServer.class)
+
+                        Map<ProcessingServer,JSONObject> mapOfJSONs= new HashMap<ProcessingServer,JSONObject>()
+                        for(int i=0;i< processingServerCollection.size();i++)
+                        {
+                            ProcessingServer ps=new ProcessingServer()
+                            ps.fetch(new Long(processingServerCollection.get(i).id))
+                            processingMethod = AbstractProcessingMethod.newInstance(ps.getStr("processingMethodName"))
+
+                            processingMethod.initiateTheSSHConnection(ps)
+                            JSONObject validityOfCurrentPs=new JSONObject()
+                            validityOfCurrentPs=processingMethod.checkValidityOfProcessingServer(ps)
+
+                            //we'll retrieve the 3 information about the current PS. Only if the current PS is valid... So, UP with Singularity installed
+                            if(validityOfCurrentPs.get("isValid")==true)
+                                mapOfJSONs.put(ps,processingMethod.getFullInformation(ps))
+
+                        }
+
+                        //we inject the request into the queue of the good ps
+                        JSONObject jsonToReturn= new JSONObject(mapOfJSONs)
+                        jsonToReturn.put("requestType","responseCheckLoadsForAllPS" )
+                        String exchangeName="exchangeCommunicationRetrieve"
+                        channel.basicPublish(exchangeName,"", null, jsonToReturn.toString().getBytes())
+
+
+                    }
+                    catch(Exception ex)
+                    {
+                        log.info("error: ${ex.printStackTrace()}")
+                    }
 
                     break
 
