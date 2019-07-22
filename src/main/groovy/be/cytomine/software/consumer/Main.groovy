@@ -16,61 +16,66 @@ package be.cytomine.software.consumer
  * limitations under the License.
  */
 
+import be.cytomine.client.collections.Collection
 import be.cytomine.client.Cytomine
 import be.cytomine.client.CytomineException
-import be.cytomine.client.collections.ProcessingServerCollection
 import be.cytomine.client.collections.SoftwareCollection
-import be.cytomine.client.collections.SoftwareUserRepositoryCollection
+import be.cytomine.client.models.ProcessingServer
 import be.cytomine.client.models.Software
 import be.cytomine.client.models.SoftwareUserRepository
 import be.cytomine.client.models.User
+import be.cytomine.software.communication.Communication
+import be.cytomine.software.communication.SSH
 import be.cytomine.software.consumer.threads.CommunicationThread
 import be.cytomine.software.consumer.threads.ProcessingServerThread
-import be.cytomine.software.repository.AbstractRepositoryManager
 import be.cytomine.software.repository.SoftwareManager
 import be.cytomine.software.repository.threads.RepositoryManagerThread
+import com.jcraft.jsch.ChannelExec
+import com.jcraft.jsch.JSch
+import com.jcraft.jsch.Session
 import com.rabbitmq.client.Channel
 import com.rabbitmq.client.Connection
 import com.rabbitmq.client.ConnectionFactory
 import groovy.json.JsonSlurper
 import groovy.util.logging.Log4j
 import org.apache.log4j.PropertyConfigurator
-
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
 @Log4j
 class Main {
 
+
     static def configFile = new ConfigSlurper().parse(new File("config.groovy").toURI().toURL())
 
     static Cytomine cytomine
     static Connection connection
     static Channel channel
-
     static def pendingPullingTable = []
-
     static void main(String[] args) {
-        PropertyConfigurator.configure("log4j.properties");
+
+        PropertyConfigurator.configure("log4j.properties")
 
         log.info("GROOVY_HOME : ${System.getenv("GROOVY_HOME")}")
         log.info("PATH : ${System.getenv("PATH")}")
 
-        // Create the directory for logs
+        log.info("Create the directory for logs")
         def logsDirectory = new File((String) configFile.cytomine.software.path.jobs)
         if (!logsDirectory.exists()) logsDirectory.mkdirs()
 
-        // Create the directory for software data
+        log.info("Create the directory for software data")
         def dataDirectory = new File((String) configFile.cytomine.software.path.softwareSources)
         if (!dataDirectory.exists()) dataDirectory.mkdirs()
 
-        // Create the directory for images
+        log.info("Create the directory for images")
         def imagesDirectory = new File((String) configFile.cytomine.software.path.softwareImages)
         if (!imagesDirectory.exists()) imagesDirectory.mkdirs()
 
-        // Cytomine instance
-        cytomine = new Cytomine(configFile.cytomine.core.url as String, configFile.cytomine.core.publicKey as String, configFile.cytomine.core.privateKey as String)
-
+         // Cytomine instance
+        log.info("Connection to the Cytomine instance with:")
+        log.info("${configFile.cytomine.core.url} ${configFile.cytomine.core.publicKey} ${configFile.cytomine.core.privateKey}")
+        Cytomine.connection(configFile.cytomine.core.url, configFile.cytomine.core.publicKey, configFile.cytomine.core.privateKey)
+        log.info("Connection done. Before ping2!")
         ping()
 
         log.info("Launch repository thread")
@@ -87,20 +92,23 @@ class Main {
     }
 
     static void ping() {
-        int limit = 20
+        int limit = configFile.cytomine.software.ping.maxRetries
+        long timeToSleep= new Long(configFile.cytomine.software.ping.sleep)
         int i=0
         while (i < limit){
+            log.info("connection attempt to the core number: $i")
             try {
-                User current = cytomine.getCurrentUser()
+                User current = Cytomine.getInstance().getCurrentUser()
+
                 if(current.getId() != null) {
                     log.info("Connected as " + current.get("username"))
                     break
                 }
-                sleep(30000)
+                sleep(timeToSleep)
                 i++
             } catch (CytomineException e) {
                 log.error("Connection not established. Retry : "+i)
-                sleep(30000)
+                sleep(timeToSleep)
                 i++
             }
         }
@@ -113,15 +121,20 @@ class Main {
         connectionFactory.setPassword(configFile.rabbitmq.password as String)
         connection = connectionFactory.newConnection()
         channel = connection.createChannel()
+        String queueName="queueCommunicationRetrieve"
+        String exchangeName="exchangeCommunicationRetrieve"
+
+        channel.exchangeDeclare(exchangeName, "direct", true)
+        channel.queueDeclare(queueName, true, false, false, null)
+        channel.queueBind(queueName, exchangeName, "")
     }
 
     static RepositoryManagerThread launchRepositoryManagerThread() {
         def repositoryManagers = []
 
-        SoftwareUserRepositoryCollection softwareUserRepositories = cytomine.getSoftwareUserRepositories()
+        Collection<SoftwareUserRepository> softwareUserRepositories = Collection.fetch(SoftwareUserRepository.class)
         for (int i = 0; i < softwareUserRepositories.size(); i++) {
             SoftwareUserRepository currentSoftwareUserRepository = softwareUserRepositories.get(i)
-
             try {
                 SoftwareManager softwareManager = new SoftwareManager(
                         currentSoftwareUserRepository.getStr("username"),
@@ -144,7 +157,7 @@ class Main {
                         repositoryManagerExist = true
 
                         // Populate the software table with existing Cytomine software
-                        SoftwareCollection softwareCollection = cytomine.getSoftwaresBySoftwareUserRepository(currentSoftwareUserRepository.getId())
+                        SoftwareCollection softwareCollection = SoftwareCollection.fetchBySoftwareUserRepository(new Long(currentSoftwareUserRepository.getId()))
                         for (int j = 0; j < softwareCollection.size(); j++) {
                             Software currentSoftware = softwareCollection.get(j)
                             def key = currentSoftwareUserRepository.getStr("prefix").trim().toLowerCase() + currentSoftwareUserRepository.getStr("name").trim().toLowerCase()
@@ -160,7 +173,7 @@ class Main {
                 // If the software manager doesn't exist, add it
                 if (!repositoryManagerExist) {
                     // Populate the software table with existing Cytomine software
-                    SoftwareCollection softwareCollection = cytomine.getSoftwaresBySoftwareUserRepository(currentSoftwareUserRepository.getId())
+                    SoftwareCollection softwareCollection = SoftwareCollection.fetchBySoftwareUserRepository(new Long(currentSoftwareUserRepository.getId()))
                     for (int j = 0; j < softwareCollection.size(); j++) {
                         Software currentSoftware = softwareCollection.get(j)
                         def key = currentSoftwareUserRepository.getStr("prefix").trim().toLowerCase() + currentSoftware.getStr("name").trim().toLowerCase()
@@ -169,6 +182,7 @@ class Main {
                         softwareManager.softwareTable.put(key, currentSoftware)
                     }
 
+                    // Add the software manager
                     // Add the software manager
                     repositoryManagers.add(softwareManager)
                 }
@@ -179,7 +193,6 @@ class Main {
                 log.info("An unknown exception occurred : ${ex.getMessage()}")
             }
         }
-
         // Launch the repository manager thread
         def repositoryManagerThread = new RepositoryManagerThread(repositoryManagers: repositoryManagers as ArrayList)
         def executorService = Executors.newSingleThreadExecutor()
@@ -202,10 +215,9 @@ class Main {
     static void launchProcessingServerQueues() {
         JsonSlurper jsonSlurper = new JsonSlurper()
 
-        ProcessingServerCollection processingServerCollection = cytomine.getProcessingServerCollection()
+        Collection<ProcessingServer> processingServerCollection = Collection.fetch(ProcessingServer.class)
         for (int i = 0; i < processingServerCollection.size(); i++) {
             def queue = jsonSlurper.parseText(processingServerCollection.get(i).getStr("amqpQueue"))
-
             Runnable processingServerThread = new ProcessingServerThread(
                     channel,
                     queue,

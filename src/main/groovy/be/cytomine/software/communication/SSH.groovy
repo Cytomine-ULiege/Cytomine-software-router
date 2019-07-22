@@ -30,12 +30,27 @@ class SSH implements Communication {
     String host
     String keyFilePath
     String keyPassword = null
+    Session session
     int port = 22
+    int statusCode
+    /*SSH status Error Codes
+        0 =Success
+        1 =Generic error
+        2 =Remote host connection failure
+    */
 
+    SSH(String host,int port, String user, String keyFilePath)
+    {
+        this.user=user
+        this.port=port
+        this.host=host
+        this.keyFilePath=keyFilePath
+        this.keyPassword=null
+        this.session=null
+    }
     private Session createSession() {
         try {
             JSch jSch = new JSch()
-
             if (keyFilePath != null) {
                 if (keyPassword != null) {
                     jSch.addIdentity(keyFilePath as String, keyPassword as String)
@@ -43,24 +58,53 @@ class SSH implements Communication {
                     jSch.addIdentity(keyFilePath as String)
                 }
             }
-
             Properties properties = new Properties()
             properties.put("StrictHostKeyChecking", "no")
+            session = jSch.getSession(user, host, port)
 
-            Session session = jSch.getSession(user, host, port)
             session.setConfig(properties)
+            log.info("Connection SSH attempt with: $user@$host:$port (Keypath:$keyFilePath)")
             session.connect()
-
+            log.info("Connection SSH ok!")
             return session
         } catch (JSchException ex) {
             log.info(ex.toString())
             return null
         }
+        catch (Exception ex)
+        {
+            log.info("${ex.printStackTrace()}")
+        }
+    }
+
+    @Override
+    def getExitStatus()
+    {
+        return statusCode
+    }
+    def printStatusCode(int statusCode)
+    {
+
+        switch(statusCode)
+        {
+            case 0:
+                log.info("exit-status: ${statusCode} (Success)")
+                break
+            case 1:
+                log.info("exit-status: ${statusCode} (Generic error)")
+                break
+            case 2:
+                log.info("exit-status: ${statusCode} (Remote host connection failure)")
+                break
+            default:
+                log.info("exit-status: ${statusCode}")
+                break
+        }
     }
 
     @Override
     def executeCommand(String command) throws JSchException, UnknownHostException {
-        Session session = createSession()
+        session = createSession()
 
         Channel channel = session.openChannel("exec")
         ((ChannelExec) channel).setCommand(command)
@@ -83,7 +127,8 @@ class SSH implements Communication {
                 log.info(current)
             }
             if (channel.isClosed()) {
-                log.info("exit-status: ${channel.getExitStatus()}")
+                statusCode=channel.getExitStatus()
+                printStatusCode(statusCode)
                 closed = true
             }
         }
@@ -95,8 +140,47 @@ class SSH implements Communication {
     }
 
     @Override
+    def executeCommandWithoutCreateNewSession(String command) throws JSchException, UnknownHostException {
+
+        if(this.session==null)
+        {
+            //we need to create the session first!
+            this.session=createSession()
+        }
+        Channel channel = session.openChannel("exec")
+        ((ChannelExec) channel).setCommand(command)
+        channel.setInputStream(null)
+        ((ChannelExec) channel).setErrStream(System.err)
+
+        InputStream inputStream = channel.getInputStream()
+        channel.connect()
+
+        boolean closed = false
+        byte[] temp = new byte[1024]
+        String result = ""
+
+        while (!closed) {
+            while (inputStream.available() > 0) {
+                int bytesRead = inputStream.read(temp, 0, 1024)
+                if (bytesRead < 0) break
+                String current = new String(temp, 0, bytesRead)
+                result += current
+                log.info(current)
+            }
+            if (channel.isClosed()) {
+                statusCode=channel.getExitStatus()
+                printStatusCode(statusCode)
+                closed = true
+            }
+        }
+
+        return result
+    }
+
+
+    @Override
     def copyRemoteToLocal(def from, def to, def filename) throws JSchException, IOException, UnknownHostException {
-        Session session = createSession()
+        session = createSession()
 
         from += File.separator + filename
         def prefix = null
@@ -184,7 +268,7 @@ class SSH implements Communication {
 
     @Override
     def copyLocalToRemote(def from, def to, def filename) throws JSchException, IOException, UnknownHostException {
-        Session session = createSession()
+        session = createSession()
 
         def ptimestamp = true
         from = from + File.separator + filename

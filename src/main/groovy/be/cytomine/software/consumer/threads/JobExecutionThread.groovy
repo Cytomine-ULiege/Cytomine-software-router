@@ -1,6 +1,7 @@
 package be.cytomine.software.consumer.threads
 
-import be.cytomine.client.Cytomine
+import be.cytomine.client.models.AttachedFile
+import be.cytomine.client.models.Job
 
 /*
  * Copyright (c) 2009-2018. Authors: see NOTICE file.
@@ -41,13 +42,15 @@ class JobExecutionThread implements Runnable {
 
     @Override
     void run() {
+        Job job
         try {
             // Executes a job on a server using a processing method(slurm,...) and a communication method (SSH,...)
             def result = processingMethod.executeJob(command, serverParameters, workingDirectory)
             serverJobId = result['jobId']
+            job= new Job().fetch(new Long(cytomineJobId))
             if (serverJobId == -1) {
                 log.error("${logPrefix()} Job failed! Reason: ${result['message']}")
-                Main.cytomine.changeStatus(cytomineJobId, Cytomine.JobStatus.FAILED, 0, result['message'] as String)
+                job.changeStatus(cytomineJobId,job.getVal(Job.JobStatus.FAILED), 0, result['message'] as String)
                 return
             }
 
@@ -55,10 +58,12 @@ class JobExecutionThread implements Runnable {
             log.info("${logPrefix()} Cytomine job id   : ${cytomineJobId}")
             log.info("${logPrefix()} Server job id     : ${serverJobId}")
 
+            if(Integer.parseInt(job.getStr("status"))==job.getVal(Job.JobStatus.INQUEUE))
+            {
+                job.changeStatus(cytomineJobId,job.getVal(Job.JobStatus.RUNNING), 0)
+            }
             // Wait until the end of the job
             while (processingMethod.isAlive(serverJobId)) {
-                log.info("${logPrefix()} Job is running !")
-
                 sleep((refreshRate as Long) * 1000)
             }
 
@@ -71,9 +76,8 @@ class JobExecutionThread implements Runnable {
 
                 if (logFile.exists()) {
                     // Upload the log file as an attachedFile to the Cytomine-core
-                    Main.cytomine.uploadAttachedFile(filePath as String, "be.cytomine.processing.Job", cytomineJobId
-                            as Long)
-
+                    AttachedFile uploadAttachedFile= new AttachedFile("be.cytomine.processing.Job", cytomineJobId as Long,filePath as String )
+                    uploadAttachedFile=uploadAttachedFile.save()
                     // Remove the log file
                     new File(filePath as String).delete()
                 }
@@ -83,7 +87,7 @@ class JobExecutionThread implements Runnable {
         }
         catch (Exception e) {
             // Indeterminate status because job could have been launched before the exception
-            Main.cytomine.changeStatus(cytomineJobId, Cytomine.JobStatus.INDETERMINATE, 0, e.getMessage())
+            job.changeStatus(cytomineJobId,job.getVal(Job.JobStatus.INDETERMINATE), 0,e.getMessage())
         }
 
         // Remove the job id from the running jobs
@@ -91,16 +95,17 @@ class JobExecutionThread implements Runnable {
     }
 
     void kill() {
+        Job job= new Job()
         if (processingMethod.killJob(serverJobId)) {
             synchronized (runningJobs) {
                 runningJobs.remove(cytomineJobId)
             }
             log.info("${logPrefix()} The job [${cytomineJobId}] has been killed successfully !")
-            Main.cytomine.changeStatus(cytomineJobId, 8, 0) // Cytomine.JobStatus.KILLED = 8
+            job.changeStatus(cytomineJobId,job.getVal(Job.JobStatus.KILLED), 0)
         }
         else {
             log.info("${logPrefix()} The job [${cytomineJobId}] has not been killed !")
-            Main.cytomine.changeStatus(cytomineJobId, Cytomine.JobStatus.INDETERMINATE, 0)
+            job.changeStatus(cytomineJobId,job.getVal(Job.JobStatus.INDETERMINATE), 0)
         }
     }
 

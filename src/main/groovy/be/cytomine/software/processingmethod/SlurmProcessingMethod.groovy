@@ -1,5 +1,8 @@
 package be.cytomine.software.processingmethod
 
+
+import be.cytomine.software.CheckingLoadSlurmProcessingServer
+
 /*
  * Copyright (c) 2009-2018. Authors: see NOTICE file.
  *
@@ -16,14 +19,98 @@ package be.cytomine.software.processingmethod
  * limitations under the License.
  */
 
-import be.cytomine.software.consumer.Main
 import com.jcraft.jsch.JSchException
+import be.cytomine.client.models.ProcessingServer
+import be.cytomine.software.communication.SSH
+import be.cytomine.software.consumer.Main
 import groovy.util.logging.Log4j
+import org.json.simple.JSONObject
 
 @Log4j
 class SlurmProcessingMethod extends AbstractProcessingMethod {
 
     protected final def DEFAULT_TIME = '60:00'
+
+        static ProcessingServer processingServer
+
+        @Override
+        def initiateTheSSHConnection(ProcessingServer ps)
+        {
+            this.processingServer=ps
+            def keyFilePath = """${Main.configFile.cytomine.software.sshKeysFile}/${ps.getStr("host")}/${ps.getStr("host")}"""
+            communication=new SSH(ps.getStr("host"),ps.getInt("port"),ps.getStr("username"),keyFilePath)
+        }
+
+        @Override
+        def getFullInformation(ProcessingServer ps)
+        {
+            if(ps!=null)
+            {
+                CheckingLoadSlurmProcessingServer checkingLoadSlurmProcessingServer=new CheckingLoadSlurmProcessingServer(communication,ps)
+                List<String> listNamePartition= checkingLoadSlurmProcessingServer.getListNamesOfPartitions("sinfo -o %R --noheader")
+                ArrayList<Map> listOfAllPartitions=checkingLoadSlurmProcessingServer.getListAllOfPartitions("scontrol show partition ",listNamePartition)
+                ArrayList<Map> listOfAllNodes = checkingLoadSlurmProcessingServer.getListAllOfNodes("scontrol show node ",listOfAllPartitions)
+                JSONObject jsonOfTheCurrentPS= checkingLoadSlurmProcessingServer.makeAFullInformationJSonFromList(listOfAllPartitions,listOfAllNodes)
+                return jsonOfTheCurrentPS
+            }
+        }
+
+        def checkValidityOfProcessingServer(ProcessingServer ps)
+        {
+            //This function checks if the PS is up and if singularity is installed on the PS
+            JSONObject jsToReturn=new JSONObject()
+            boolean isValid=false
+            String comment
+            try
+            {
+                //init + ping
+                if(communication==null)
+                    initiateTheSSHConnection(ps)
+            }
+            catch(Exception ex)
+            {
+                log.info("SSH failed!")
+                isValid=false
+                comment="SSH failed!"
+                jsToReturn.put("isValid",isValid)
+                jsToReturn.put("comment",comment)
+                return jsToReturn
+            }
+
+            try
+            {
+                log.info("check singularity")
+                def response = communication.executeCommandWithoutCreateNewSession("singularity --version")
+                if(communication.getExitStatus()!=0)
+                {
+                    log.info("Singularity isn't installed!")
+                    isValid=false
+                    comment="Singularity isn't installed!"
+                    jsToReturn.put("isValid",isValid)
+                    jsToReturn.put("comment",comment)
+                    return jsToReturn
+                }
+                else
+                {
+                    log.info("Singularity is installed!")
+                }
+            }
+            catch(Exception ex)
+            {
+                log.info("exception  ${ex.printStackTrace()}")
+                isValid=false
+                comment="Singularity isn't installed!"
+                jsToReturn.put("isValid",isValid)
+                jsToReturn.put("comment",comment)
+                return jsToReturn
+            }
+
+            log.info("The processing server is valid: the ping works and singularity is installed")
+            jsToReturn.put("isValid",true)
+            jsToReturn.put("comment","The processing server is valid: the ping works and singularity is installed.")
+
+            return jsToReturn
+        }
 
     @Override
     def executeJob(def command, def serverParameters, def workingDirectory) {

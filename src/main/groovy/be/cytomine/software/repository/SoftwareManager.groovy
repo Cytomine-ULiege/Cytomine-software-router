@@ -16,12 +16,14 @@ package be.cytomine.software.repository
  * limitations under the License.
  */
 
+import be.cytomine.client.collections.Collection
 import be.cytomine.client.CytomineException
-import be.cytomine.client.collections.ParameterConstraintCollection
+import be.cytomine.client.models.Description
 import be.cytomine.client.models.ParameterConstraint
 import be.cytomine.client.models.Software
+import be.cytomine.client.models.SoftwareParameter
+import be.cytomine.client.models.SoftwareParameterConstraint
 import be.cytomine.software.boutiques.Interpreter
-import be.cytomine.software.consumer.Main
 import be.cytomine.software.exceptions.BoutiquesException
 import be.cytomine.software.repository.threads.ImagePullerThread
 import groovy.util.logging.Log4j
@@ -48,28 +50,51 @@ class SoftwareManager {
     }
 
     def updateSoftware() {
-        log.info("Refresh repository manager ${name} with prefixes: ${prefixes.keySet()}")
-        def repositories = dockerHubManager.getRepositories()
-        log.info(repositories)
-        repositories.each { repository ->
-            if (startsWithKnownPrefix(repository as String)) {
-                log.info("Repository : ${repository}")
-                Software currentSoftware = softwareTable.get((repository as String).trim().toLowerCase()) as Software
-                def tags = dockerHubManager.getTags(repository as String)
-                if (tags.isEmpty()) {
-                    log.info "No Docker tags: skip software"
-                    return
-                }
+        try
+        {
+            log.info("Refresh repository manager ${name} with prefixes: ${prefixes.keySet()}")
+            def repositories = dockerHubManager.getRepositories()
+            log.info(repositories)
+            repositories.each { repository ->
+                if (startsWithKnownPrefix(repository as String)) {
+                    log.info("Repository : ${repository}")
+                    Software currentSoftware = softwareTable.get((repository as String).trim().toLowerCase()) as Software
+                    def tags = dockerHubManager.getTags(repository as String)
+                    if (tags.isEmpty()) {
+                        log.info "No Docker tags: skip software"
+                        return
+                    }
 
-                if (currentSoftware != null) {
-                    if (currentSoftware.get("softwareVersion") as String != tags.first() as String) {
-                        log.info("Update the software [${repository}]")
+                    if (currentSoftware != null) {
+                        if (currentSoftware.get("softwareVersion") as String != tags.first() as String) {
+                            log.info("Update the software [${repository}]")
+
+                            try {
+                                def result = installSoftware(repository, tags.first())
+                                Software software= new Software().fetch(currentSoftware.getId())
+                                software.set("deprecated",true)
+                                software.update()
+                                softwareTable.put((repository as String).trim().toLowerCase(), result)
+
+                                def imagePullerThread = new ImagePullerThread(pullingCommand: result.getStr("pullingCommand") as String)
+                                ExecutorService executorService = Executors.newSingleThreadExecutor()
+                                executorService.execute(imagePullerThread)
+                            } catch (GHFileNotFoundException ex) {
+                                log.info("Error during the installation of [${repository}] : ${ex.getMessage()}")
+                            } catch (BoutiquesException ex) {
+                                log.info("Boutiques exception : ${ex.getMessage()}")
+                            } catch (CytomineException ex) {
+                                log.info("Error during the adding of [${repository}] to Cytomine : ${ex.getMessage()}")
+                            } catch (Exception ex) {
+                                log.info("Unknown exception occurred : ${ex.getMessage()}")
+                            }
+                        }
+                    } else {
+                        log.info("Add the software [${repository}]")
 
                         try {
                             def result = installSoftware(repository, tags.first())
-                            Main.cytomine.deprecateSoftware(currentSoftware.getId())
                             softwareTable.put((repository as String).trim().toLowerCase(), result)
-
                             def imagePullerThread = new ImagePullerThread(pullingCommand: result.getStr("pullingCommand") as String)
                             ExecutorService executorService = Executors.newSingleThreadExecutor()
                             executorService.execute(imagePullerThread)
@@ -80,31 +105,17 @@ class SoftwareManager {
                         } catch (CytomineException ex) {
                             log.info("Error during the adding of [${repository}] to Cytomine : ${ex.getMessage()}")
                         } catch (Exception ex) {
-                            log.info("Unknown exception occurred : ${ex.getMessage()}")
+                            log.info("Unknown exception occurred : ${ex.printStackTrace()}")
                         }
-                    }
-                } else {
-                    log.info("Add the software [${repository}]")
-
-                    try {
-                        def result = installSoftware(repository, tags.first())
-                        softwareTable.put((repository as String).trim().toLowerCase(), result)
-
-                        def imagePullerThread = new ImagePullerThread(pullingCommand: result.getStr("pullingCommand") as String)
-                        ExecutorService executorService = Executors.newSingleThreadExecutor()
-                        executorService.execute(imagePullerThread)
-                    } catch (GHFileNotFoundException ex) {
-                        log.info("Error during the installation of [${repository}] : ${ex.getMessage()}")
-                    } catch (BoutiquesException ex) {
-                        log.info("Boutiques exception : ${ex.getMessage()}")
-                    } catch (CytomineException ex) {
-                        log.info("Error during the adding of [${repository}] to Cytomine : ${ex.getMessage()}")
-                    } catch (Exception ex) {
-                        log.info("Unknown exception occurred : ${ex.printStackTrace()}")
                     }
                 }
             }
         }
+        catch(IOException e)
+        {
+            log.info(e.printStackTrace())
+        }
+
     }
 
     private def startsWithKnownPrefix(def repository) {
@@ -114,25 +125,38 @@ class SoftwareManager {
     }
 
     private def installSoftware(def repository, def release) {
-        def filename = gitHubManager.retrieveDescriptor(repository as String, release as String)
 
-        Interpreter interpreter = new Interpreter(filename)
-        def pullingInformation = interpreter.getPullingInformation()
-        def imageName = interpreter.getImageName() + "-" + release as String
+        try
+        {
+            def filename = gitHubManager.retrieveDescriptor(repository as String, release as String)
+            Interpreter interpreter = new Interpreter(filename)
+            def pullingInformation = interpreter.getPullingInformation()
+            def imageName = interpreter.getImageName() + "-" + release as String
+            def pullingCommand = 'singularity pull --name ' + imageName + '.simg docker://' +
+                    pullingInformation['image'] + ':' + release as String
 
-        def pullingCommand = 'singularity pull --name ' + imageName + '.simg docker://' +
-                pullingInformation['image'] + ':' + release as String
+            def software = interpreter.parseSoftware()
+            def command = interpreter.buildExecutionCommand(imageName + ".simg")
+            def arguments = interpreter.parseParameters()
+            new File(filename).delete()
 
-        def software = interpreter.parseSoftware()
-        def command = interpreter.buildExecutionCommand(imageName + ".simg")
-        def arguments = interpreter.parseParameters()
+            def idSoftwareUserRepository = startsWithKnownPrefix(repository).value
+            log.info(" startsWithKnownPrefix ok")
+            //TODO:this comment is to remove!!!
+            //basically, we'll retrieve our new "boutique tag" on the descriptor file
 
-        new File(filename).delete()
+            /*def numberOfRamNeeded = interpreter.getRamNeeded()
+            def numberOfCpuCoresNeeded = interpreter.getCpuCoresNeeded()
+            def numberOfDiskSpaceNeeded = interpreter.getDiskSpaceNeeded()
+            String typeOfPreferredProcessor= interpreter.getPreferredProcessorType()*/
+            return addSoftwareToCytomine(release as String, software, command, arguments, pullingCommand,
+                    idSoftwareUserRepository)
 
-        def idSoftwareUserRepository = startsWithKnownPrefix(repository).value
-
-        return addSoftwareToCytomine(release as String, software, command, arguments, pullingCommand,
-                idSoftwareUserRepository)
+        }
+        catch(IOException e)
+        {
+            log.info(e.printStackTrace())
+        }
     }
 
     /**
@@ -149,28 +173,22 @@ class SoftwareManager {
     private def addSoftwareToCytomine(def version, def software, def command, def arguments, def pullingCommand,
                                       def idSoftwareUserRepository) throws CytomineException {
         // Add the piece of software
-        def resultSoftware = Main.cytomine.addSoftware(
-                version as String,
-                software.name as String,
-                idSoftwareUserRepository,
-                software.processingServerId as Long,
-                "",
-                command as String,
-                pullingCommand as String)
+        log.info("ADDING SOFTWARE")
+        Software resultSoftware= new Software(false,version as String,software.name as String, idSoftwareUserRepository, software.processingServerId as Long,"", command as String, pullingCommand as String)
+        resultSoftware = resultSoftware.save()
 
         if (software.description?.trim()) {
-            Main.cytomine.addDescription(resultSoftware.getId(), "be.cytomine.processing.Software",
-                    software.description as String)
+            Description description= new Description( "Software",resultSoftware.getId() as Long, software.description as String)
+            description=description.save()
         }
 
         // Load constraints
-        ParameterConstraintCollection constraints = Main.cytomine.getParameterConstraints()
-
+        Collection<ParameterConstraint> constraints=Collection.fetch(ParameterConstraint.class)
         // Add the arguments
         arguments.each { element ->
             def type = (element.type as String).toLowerCase().capitalize()
             if (type == 'Listdomain') type = 'ListDomain'
-            def resultSoftwareParameter = Main.cytomine.addSoftwareParameter(
+            SoftwareParameter resultSoftwareParameter = new SoftwareParameter(
                     element.name as String,
                     type,
                     resultSoftware.getId(),
@@ -185,13 +203,14 @@ class SoftwareManager {
                     element.humanName as String,
                     element.valueKey as String,
                     element.commandLineFlag as String)
-
+            resultSoftwareParameter=resultSoftwareParameter.save()
             log.info(element)
 
             // Add the description
             if (element.description?.trim()) {
-                Main.cytomine.addDescription(resultSoftwareParameter.getId(), "be.cytomine.processing.SoftwareParameter",
-                        element.description as String)
+                Description description= new Description( "SoftwareParameter",resultSoftware.getId() as Long,
+                        software.description as String)
+                description=description.save()
             }
 
             // Add the constraints
@@ -199,8 +218,8 @@ class SoftwareManager {
                 for (int i = 0; i < constraints.size(); i++) {
                     ParameterConstraint constraint = constraints.get(i)
                     if (constraint.getStr("name").trim().toLowerCase() == "integer") {
-                        Main.cytomine.addSoftwareParameterConstraint(constraint.getId(),
-                                resultSoftwareParameter.getId(), element.integer as String)
+                        SoftwareParameterConstraint softwareParameterConstraint=new SoftwareParameterConstraint(new Long(constraint.getId()),new Long(resultSoftwareParameter.getId()),  element.integer as String)
+                        softwareParameterConstraint=softwareParameterConstraint.save()
                     }
                 }
             }
@@ -210,8 +229,8 @@ class SoftwareManager {
                     ParameterConstraint constraint = constraints.get(i)
                     if (constraint.getStr("name").trim().toLowerCase() == "minimum" &&
                             constraint.getStr("dataType").trim().toLowerCase() == element.type.trim().toLowerCase()) {
-                        Main.cytomine.addSoftwareParameterConstraint(constraint.getId(),
-                                resultSoftwareParameter.getId(), element.minimum as String)
+                        SoftwareParameterConstraint softwareParameterConstraint=new SoftwareParameterConstraint(new Long(constraint.getId()),new Long(resultSoftwareParameter.getId()),  element.minimum as String)
+                        softwareParameterConstraint=softwareParameterConstraint.save()
                     }
                 }
             }
@@ -220,8 +239,8 @@ class SoftwareManager {
                     ParameterConstraint constraint = constraints.get(i)
                     if (constraint.getStr("name").trim().toLowerCase() == "maximum" &&
                             constraint.getStr("dataType").trim().toLowerCase() == element.type.trim().toLowerCase()) {
-                        Main.cytomine.addSoftwareParameterConstraint(constraint.getId(),
-                                resultSoftwareParameter.getId(), element.maximum as String)
+                        SoftwareParameterConstraint softwareParameterConstraint=new SoftwareParameterConstraint(new Long(constraint.getId()),new Long(resultSoftwareParameter.getId()),  element.maximum as String)
+                        softwareParameterConstraint=softwareParameterConstraint.save()
                     }
                 }
             }
@@ -230,8 +249,8 @@ class SoftwareManager {
                     ParameterConstraint constraint = constraints.get(i)
                     if (constraint.getStr("name").trim().toLowerCase() == "equals" &&
                             constraint.getStr("dataType").trim().toLowerCase() == element.type.trim().toLowerCase()) {
-                        Main.cytomine.addSoftwareParameterConstraint(constraint.getId(),
-                                resultSoftwareParameter.getId(), element.equals as String)
+                        SoftwareParameterConstraint softwareParameterConstraint=new SoftwareParameterConstraint(new Long(constraint.getId()),new Long(resultSoftwareParameter.getId()),  element.equals as String)
+                        softwareParameterConstraint=softwareParameterConstraint.save()
                     }
                 }
             }
@@ -240,8 +259,8 @@ class SoftwareManager {
                     ParameterConstraint constraint = constraints.get(i)
                     if (constraint.getStr("name").trim().toLowerCase() == "in" &&
                             constraint.getStr("dataType").trim().toLowerCase() == element.type.trim().toLowerCase()) {
-                        Main.cytomine.addSoftwareParameterConstraint(constraint.getId(),
-                                resultSoftwareParameter.getId(), element.in as String)
+                        SoftwareParameterConstraint softwareParameterConstraint=new SoftwareParameterConstraint(new Long(constraint.getId()),new Long(resultSoftwareParameter.getId()),  element.in as String)
+                        softwareParameterConstraint=softwareParameterConstraint.save()
                     }
                 }
             }

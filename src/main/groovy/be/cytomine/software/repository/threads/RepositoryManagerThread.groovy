@@ -61,7 +61,22 @@ class RepositoryManagerThread implements Runnable {
 
     def refreshAll() {
         log.info("Refreshing all the repository managers !")
-        repositoryManagers.each { manager -> manager.updateSoftware() }
+        try
+        {
+            repositoryManagers.each { manager -> manager.updateSoftware() }
+            return "ok"
+        }
+        catch(IOException e)
+        {
+            log.info(e.printStackTrace())
+            return "nok"
+        }
+        catch(Exception e)
+        {
+            log.info(e.printStackTrace())
+            return "nok"
+        }
+
     }
 
 }

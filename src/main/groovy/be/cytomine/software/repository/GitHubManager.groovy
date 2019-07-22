@@ -34,31 +34,46 @@ class GitHubManager extends AbstractRepositoryManager {
 
     @Override
     def connectToRepository(String username) {
-        gitHub = GitHub.connectAnonymously()
-        ghUser = gitHub.getUser(username)
+        try{
+            gitHub=new GitHubBuilder().withRateLimitHandler(RateLimitHandler.FAIL).build()
+            ghUser = gitHub.getUser(username)
+        }
+        catch(IOException e)
+        {
+            log.info(e.printStackTrace())
+        }
     }
 
     def retrieveDescriptor(def repository, def release) throws GHFileNotFoundException {
-        def currentRepository = ghUser.getRepository((repository as String).trim().toLowerCase())
-        if (currentRepository == null) {
-            throw new GHFileNotFoundException("The repository doesn't exist !")
-        }
+        try
+        {
+            if(ghUser!=null)
+            {
+                def currentRepository = ghUser.getRepository((repository as String).trim().toLowerCase())
+                if (currentRepository == null) {
+                    throw new GHFileNotFoundException("The repository doesn't exist !")
+                }
+                def content = currentRepository.getDirectoryContent(".", release as String)
 
-        def content = currentRepository.getDirectoryContent(".", release as String)
-
-        for (def element : content) {
-            if (element.getName().trim().toLowerCase() == Main.configFile.cytomine.software.descriptorFile) {
-                def url = new URL(element.getDownloadUrl())
-                def readableByteChannel = Channels.newChannel(url.openStream())
-                def filename = (Main.configFile.cytomine.software.path.softwareSources as String) + element.getName()
-                def fileOutputStream = new FileOutputStream(filename)
-                fileOutputStream.getChannel().transferFrom(readableByteChannel, 0, Long.MAX_VALUE)
-
-                return filename
+                for (def element : content) {
+                    if (element.getName().trim().toLowerCase() == Main.configFile.cytomine.software.descriptorFile) {
+                        def url = new URL(element.getDownloadUrl())
+                        def readableByteChannel = Channels.newChannel(url.openStream())
+                        def filename = (Main.configFile.cytomine.software.path.softwareSources as String) + element.getName()
+                        def fileOutputStream = new FileOutputStream(filename)
+                        fileOutputStream.getChannel().transferFrom(readableByteChannel, 0, Long.MAX_VALUE)
+                        return filename
+                    }
+                }
+                throw new GHFileNotFoundException("The software descriptor doesn't exist !")
             }
+            else
+                throw new GHFileNotFoundException("The user is null!")
         }
-
-        throw new GHFileNotFoundException("The software descriptor doesn't exist !")
+        catch(IOException e)
+        {
+            log.info(e.printStackTrace())
+        }
     }
 
 }

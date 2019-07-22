@@ -1,5 +1,7 @@
 package be.cytomine.software.processingmethod
 
+import be.cytomine.client.models.ProcessingServer
+
 /*
  * Copyright (c) 2009-2018. Authors: see NOTICE file.
  *
@@ -59,4 +61,7 @@ abstract class AbstractProcessingMethod {
 
     def abstract killJob(def jobId)
 
+    def abstract getFullInformation(ProcessingServer ps)
+    def abstract initiateTheSSHConnection(ProcessingServer ps)
+    def abstract checkValidityOfProcessingServer(ProcessingServer ps)
 }

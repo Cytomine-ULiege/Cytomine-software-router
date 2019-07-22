@@ -20,8 +20,12 @@ interface Communication {
 
     def executeCommand(String command)
 
+    def executeCommandWithoutCreateNewSession(String command)
+
     def copyRemoteToLocal(def from, def to, def filename)
 
     def copyLocalToRemote(def from, def to, def filename)
+
+    def getExitStatus()
 
 }
