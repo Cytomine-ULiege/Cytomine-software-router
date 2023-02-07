@@ -20,6 +20,7 @@ import be.cytomine.client.models.ProcessingServer
 import be.cytomine.client.models.Software
 import be.cytomine.software.consumer.Main
 import be.cytomine.software.management.SingleSoftwareManager
+import be.cytomine.software.repository.SoftwareManager
 import be.cytomine.software.repository.threads.ImagePullerThread
 import be.cytomine.software.repository.threads.RepositoryManagerThread
 import be.cytomine.software.util.Utils
@@ -54,77 +55,132 @@ class CommunicationThread implements Runnable {
         JsonSlurper jsonSlurper = new JsonSlurper()
 
         while (true) {
-            log.info("[Communication] Thread waiting on queue : " + queueName)
+            try {
+                log.info("[Communication] Thread waiting on queue : " + queueName)
 
-            // Waiting for a new message
-            QueueingConsumer.Delivery delivery = consumer.nextDelivery()
-            String message = new String(delivery.getBody())
-            log.info("[Communication] Received message: ${message}")
+                // Waiting for a new message
+                QueueingConsumer.Delivery delivery = consumer.nextDelivery()
+                String message = new String(delivery.getBody())
+                log.info("[Communication] Received message: ${message}")
 
-            def mapMessage = jsonSlurper.parseText(message)
-            switch (mapMessage["requestType"]) {
-                case "addProcessingServer":
-                    log.info("[Communication] Add a new processing server : " + mapMessage["name"])
+                def mapMessage = jsonSlurper.parseText(message)
+                switch (mapMessage["requestType"]) {
+                    case "addProcessingServer":
+                        log.info("[Communication] Add a new processing server : " + mapMessage["name"])
 
-                    ProcessingServer processingServer = new ProcessingServer().fetch(mapMessage["processingServerId"] as Long)
+                        ProcessingServer processingServer = new ProcessingServer().fetch(mapMessage["processingServerId"] as Long)
 
-                    // Launch the processingServerThread associated to the upon processingServer
-                    Runnable processingServerThread = new ProcessingServerThread(channel, mapMessage, processingServer)
-                    ExecutorService executorService = Executors.newSingleThreadExecutor()
-                    executorService.execute(processingServerThread)
-                    break
-                case "addSoftwareUserRepository":
-                case "refreshSoftwareUserRepositoryList":
-                    log.info("[Communication] Re-fetch software user repositories, it has changed")
-                    sleep(3000)
-                    def repositoryManagers = Main.createRepositoryManagers()
+                        // Launch the processingServerThread associated to the upon processingServer
+                        Runnable processingServerThread = new ProcessingServerThread(channel, mapMessage, processingServer)
+                        ExecutorService executorService = Executors.newSingleThreadExecutor()
+                        executorService.execute(processingServerThread)
+                        break
+                    case "addSoftwareUserRepository":
+                        log.info("[Communication] Add a new software user repository")
+                        log.info("============================================")
+                        log.info("username          : ${mapMessage["username"]}")
+                        log.info("dockerUsername    : ${mapMessage["dockerUsername"]}")
+                        log.info("prefix            : ${mapMessage["prefix"]}")
+                        log.info("============================================")
 
-                    synchronized (repositoryManagerThread.repositoryManagers) {
-                        repositoryManagerThread.repositoryManagers = repositoryManagers
-                    }
+                        def connectOpts = Main.buildConnectOpts(null)
+                        def softwareManager = new SoftwareManager(mapMessage["username"], mapMessage["dockerUsername"], mapMessage["prefix"], mapMessage["id"], connectOpts)
 
-                    // Refresh all after add
-                    repositoryManagerThread.refreshAll()
 
-                    break
-                case "refreshRepository":
-                    log.info("[Communication] Refresh software user repository: ${mapMessage["username"]}")
-                    repositoryManagerThread.refresh(mapMessage["username"])
+                        def repositoryManagerExist = false
+                        for (SoftwareManager elem : repositoryManagerThread.repositoryManagers) {
 
-                    break
-                case "refreshRepositories":
-                    log.info("[Communication] Refresh all software user repositories")
+                            // Check if the software manager already exists
+                            if (softwareManager.gitHubManager.getClass().getName() == elem.gitHubManager.getClass().getName() &&
+                                    softwareManager.gitHubManager.username == elem.gitHubManager.username &&
+                                    softwareManager.dockerHubManager.username == elem.dockerHubManager.username) {
 
-                    repositoryManagerThread.refreshAll()
-                    break
-                case "addSoftware":
-                    log.info("[Communication] Add a new software")
-                    log.info("============================================")
-                    log.info("software_id          : ${mapMessage["SoftwareId"]}")
-                    log.info("============================================")
+                                repositoryManagerExist = true
 
-                    Software software = new Software().fetch(mapMessage["SoftwareId"] as Long)
+                                // If the repository manager already exists and doesn't have the prefix yet, add it
+                                if (!elem.prefixes.containsKey(mapMessage["prefix"])) {
+                                    elem.prefixes << [(mapMessage["prefix"]): mapMessage["id"]]
+                                }
+                                break
+                            }
+                        }
 
-                    String downloadedPath = (Main.configFile.cytomine.software.path.softwareSources as String)+"/tmp/"+software.getId()+".zip"
-                    String sourcePath = (Main.configFile.cytomine.software.path.softwareSources as String)+"/"+software.getId()+".zip"
-                    software.download(downloadedPath)
+                        // If the software manager doesn't exist, add it
+                        if (!repositoryManagerExist) {
+                            synchronized (repositoryManagerThread.repositoryManagers) {
+                                repositoryManagerThread.repositoryManagers.add(softwareManager)
+                            }
+                        }
 
-                    if(!Files.probeContentType(Paths.get(downloadedPath)).contains("application/zip")){
-                        log.error "source file is not a zip file. Skipped"
-                        continue
-                    }
-                    Utils.executeProcess("mv ${downloadedPath} ${sourcePath}", ".")
+                        // Refresh all after add
+                        repositoryManagerThread.refreshAll()
 
-                    String version = software.get("softwareVersion")
-                    def softwareManager = new SingleSoftwareManager(mapMessage["SoftwareId"] as Long, version, new File(sourcePath))
-                    def result = softwareManager.installSoftware()
+                        break
+                    case "removeSoftwareUserRepository":
+                        log.info("[Communication] Remove a software user repository")
+                        log.info("============================================")
+                        log.info("username          : ${mapMessage["username"]}")
+                        log.info("dockerUsername    : ${mapMessage["dockerUsername"]}")
+                        log.info("prefix            : ${mapMessage["prefix"]}")
+                        log.info("============================================")
+                        boolean success = repositoryManagerThread.repositoryManagers.remove(new SoftwareManager(mapMessage["username"], mapMessage["dockerUsername"], mapMessage["prefix"], mapMessage["id"], Main.buildConnectOpts(null)))
+                        log.info("SoftwareManager removed : ${success}")
+                        break
+                    case "refreshSoftwareUserRepositoryList":
+                        log.info("[Communication] Re-fetch software user repositories, it has changed")
+                        sleep(3000)
+                        def repositoryManagers = Main.createRepositoryManagers()
 
-                    Closure callback = { softwareManager.cleanFiles() }
-                    def imagePullerThread = new ImagePullerThread(pullingCommand: result.getStr("pullingCommand") as String, callback: callback)
-                    ExecutorService executorService = Executors.newSingleThreadExecutor()
-                    executorService.execute(imagePullerThread)
+                        synchronized (repositoryManagerThread.repositoryManagers) {
+                            repositoryManagerThread.repositoryManagers = repositoryManagers
+                        }
 
-                    break
+                        // Refresh all after add
+                        repositoryManagerThread.refreshAll()
+
+                        break
+                    case "refreshRepository":
+                        log.info("[Communication] Refresh software user repository: ${mapMessage["username"]}")
+                        repositoryManagerThread.refresh(mapMessage["username"])
+
+                        break
+                    case "refreshRepositories":
+                        log.info("[Communication] Refresh all software user repositories")
+
+                        repositoryManagerThread.refreshAll()
+                        break
+                    case "addSoftware":
+                        log.info("[Communication] Add a new software")
+                        log.info("============================================")
+                        log.info("software_id          : ${mapMessage["SoftwareId"]}")
+                        log.info("============================================")
+
+                        Software software = new Software().fetch(mapMessage["SoftwareId"] as Long)
+
+                        String downloadedPath = (Main.configFile.cytomine.software.path.softwareSources as String) + "/tmp/" + software.getId() + ".zip"
+                        String sourcePath = (Main.configFile.cytomine.software.path.softwareSources as String) + "/" + software.getId() + ".zip"
+                        software.download(downloadedPath)
+
+                        if (!Files.probeContentType(Paths.get(downloadedPath)).contains("application/zip")) {
+                            log.error "source file is not a zip file. Skipped"
+                            continue
+                        }
+                        Utils.executeProcess("mv ${downloadedPath} ${sourcePath}", ".")
+
+                        String version = software.get("softwareVersion")
+                        def softwareManager = new SingleSoftwareManager(mapMessage["SoftwareId"] as Long, version, new File(sourcePath))
+                        def result = softwareManager.installSoftware()
+
+                        Closure callback = { softwareManager.cleanFiles() }
+                        def imagePullerThread = new ImagePullerThread(pullingCommand: result.getStr("pullingCommand") as String, callback: callback)
+                        ExecutorService executorService = Executors.newSingleThreadExecutor()
+                        executorService.execute(imagePullerThread)
+
+                        break
+                }
+            } catch(Throwable throwable) {
+                throwable.printStackTrace()
+                log.error("Error during processing:"+ throwable)
             }
         }
     }
